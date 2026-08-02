@@ -1,0 +1,8 @@
+.env
+certs/
+node_modules/
+.DS_Store
+pakku_connect/build/
+pakku_connect/.dart_tool/
+pakku_connect/.pub-cache/
+pakku_connect/.pub/
