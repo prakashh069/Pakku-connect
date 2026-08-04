@@ -9,13 +9,15 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.telecom.TelecomManager
+import android.provider.ContactsContract
+import android.telephony.TelephonyManager
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
-import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import okhttp3.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -183,6 +185,17 @@ class PhoneStateService : Service() {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WSS connected")
+                try {
+                    val msg = JSONObject()
+                    msg.put("type", "device_state")
+                    msg.put("state", "connected")
+                    val jsonStr = msg.toString()
+                    Log.d(TAG, "DEBUG: About to send device_state: \$jsonStr")
+                    val success = webSocket.send(jsonStr)
+                    Log.d(TAG, "DEBUG: webSocket.send returned: \$success")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send device_state: ${e.message}")
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -197,10 +210,17 @@ class PhoneStateService : Service() {
                 }
             }
 
+            override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
+                onMessage(webSocket, bytes.utf8())
+            }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
                     when (json.optString("type")) {
+                        "contacts_request" -> {
+                            syncContacts()
+                        }
                         "answer_call" -> {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                                 try {
@@ -247,6 +267,79 @@ class PhoneStateService : Service() {
                 }
             }
         })
+    }
+
+    private fun syncContacts() {
+        val jsonArray = JSONArray()
+        try {
+            val projection = arrayOf(
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.TYPE,
+                ContactsContract.CommonDataKinds.Phone.LABEL
+            )
+            val cursor = contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                projection,
+                null,
+                null,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+            )
+            
+            cursor?.use {
+                val idIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
+                val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val typeIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE)
+                val labelIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.LABEL)
+
+                val contactsMap = mutableMapOf<String, JSONObject>()
+
+                while (it.moveToNext()) {
+                    val id = it.getString(idIdx) ?: continue
+                    val name = it.getString(nameIdx) ?: ""
+                    val number = it.getString(numIdx) ?: ""
+                    val type = it.getInt(typeIdx)
+                    var label = it.getString(labelIdx) ?: ""
+                    
+                    if (label.isEmpty()) {
+                        label = ContactsContract.CommonDataKinds.Phone.getTypeLabel(resources, type, "").toString()
+                    }
+
+                    val phoneObj = JSONObject().apply {
+                        put("label", label)
+                        put("number", number)
+                    }
+
+                    if (!contactsMap.containsKey(id)) {
+                        val contactObj = JSONObject().apply {
+                            put("id", id)
+                            put("displayName", name)
+                            put("phones", JSONArray())
+                        }
+                        contactsMap[id] = contactObj
+                    }
+                    
+                    contactsMap[id]?.getJSONArray("phones")?.put(phoneObj)
+                }
+                
+                for (contact in contactsMap.values) {
+                    jsonArray.put(contact)
+                }
+            }
+            
+            val response = JSONObject().apply {
+                put("type", "contacts")
+                put("contacts", jsonArray)
+            }
+            webSocket?.send(response.toString())
+            Log.d(TAG, "Sent ${jsonArray.length()} contacts")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Permission denied to read contacts", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync contacts", e)
+        }
     }
 
     // ---------------------------------------------------------------

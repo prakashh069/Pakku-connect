@@ -5,6 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../constants/message_types.dart';
+import '../models/contact.dart';
+
+enum DeviceSessionState {
+  connected,
+  disconnected,
+}
 
 class WebSocketService {
   WebSocketChannel? _channel;
@@ -16,6 +22,8 @@ class WebSocketService {
   void Function(String phoneNumber, String? contactName)? onIncomingCall;
   void Function(String state)? onCallState; // "answered" | "ended"
   void Function(bool connected)? onConnectionChange;
+  void Function(DeviceSessionState state)? onDeviceStateChanged;
+  void Function(List<RemoteContact> contacts)? onContactsReceived;
 
   void connect(String url) {
     _url = url;
@@ -80,7 +88,15 @@ class WebSocketService {
 
   void _onMessage(dynamic raw) {
     try {
-      final data = jsonDecode(raw as String) as Map<String, dynamic>;
+      String payload;
+      if (raw is String) {
+        payload = raw;
+      } else if (raw is List<int>) {
+        payload = utf8.decode(raw);
+      } else {
+        return;
+      }
+      final data = jsonDecode(payload) as Map<String, dynamic>;
       final type = data['type'] as String?;
       if (type == MessageTypes.incomingCall) {
         onIncomingCall?.call(
@@ -89,6 +105,31 @@ class WebSocketService {
         );
       } else if (type == MessageTypes.callState) {
         onCallState?.call(data['state'] as String? ?? 'ended');
+      } else if (type == MessageTypes.deviceState) {
+        final state = data['state'];
+        
+        if (state is! String) {
+          return;
+        }
+
+        switch (state) {
+          case 'connected':
+            onDeviceStateChanged?.call(DeviceSessionState.connected);
+            break;
+          case 'disconnected':
+            onDeviceStateChanged?.call(DeviceSessionState.disconnected);
+            break;
+          default:
+            break;
+        }
+      } else if (type == MessageTypes.contacts) {
+        final contactsData = data['contacts'] as List?;
+        if (contactsData != null) {
+          final contacts = contactsData
+              .map((e) => RemoteContact.fromJson(Map<String, dynamic>.from(e)))
+              .toList();
+          onContactsReceived?.call(contacts);
+        }
       }
     } catch (e, st) {
       debugPrint('WebSocketService: Failed to parse message: $e\n$st');
@@ -97,6 +138,10 @@ class WebSocketService {
 
   void send(Map<String, dynamic> message) {
     _channel?.sink.add(jsonEncode(message));
+  }
+
+  void requestContacts() {
+    send({'type': MessageTypes.contactsRequest});
   }
 
   void disconnect() {

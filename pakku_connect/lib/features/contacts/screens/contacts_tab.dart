@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_contacts/flutter_contacts.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../../calling/services/call_manager.dart';
 import '../../../core/constants/app_theme.dart';
+import '../../../core/services/websocket_service.dart';
+import '../../../core/models/contact.dart';
 
 class ContactsTab extends StatefulWidget {
   const ContactsTab({super.key});
@@ -13,43 +14,76 @@ class ContactsTab extends StatefulWidget {
 }
 
 class _ContactsTabState extends State<ContactsTab> {
-  List<Contact> _all = [];
-  List<Contact> _filtered = [];
+  List<RemoteContact> _all = [];
+  List<RemoteContact> _filtered = [];
   bool _loading = true;
-  bool _denied = false;
+  bool _hasError = false;
   final _search = TextEditingController();
+  WebSocketService? _wsService;
+  Timer? _timeoutTimer;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _wsService = context.read<WebSocketService>();
+      _wsService?.onContactsReceived = _onContactsReceived;
+      _requestContactsWithTimeout();
+    });
   }
 
-  Future<void> _load() async {
-    final status = await Permission.contacts.request();
-    if (!status.isGranted) {
-      setState(() {
-        _loading = false;
-        _denied = true;
-      });
-      return;
+  @override
+  void dispose() {
+    _timeoutTimer?.cancel();
+    if (_wsService?.onContactsReceived == _onContactsReceived) {
+      _wsService?.onContactsReceived = null;
     }
-    setState(() {
-      _loading = true;
-      _denied = false;
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _requestContactsWithTimeout() {
+    _timeoutTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _hasError = false;
+      });
+    }
+    _wsService?.requestContacts();
+    _timeoutTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted && _loading) {
+        setState(() {
+          _loading = false;
+          _hasError = true;
+        });
+      }
     });
-    _all = await FlutterContacts.getContacts(withProperties: true);
-    _filtered = List.from(_all);
-    setState(() => _loading = false);
+  }
+
+  void _onContactsReceived(List<RemoteContact> contacts) {
+    _timeoutTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _all = contacts;
+        _filter(_search.text);
+        _loading = false;
+        _hasError = false;
+      });
+    }
   }
 
   void _filter(String q) {
     setState(() {
-      _filtered = _all.where((c) {
-        final name = c.displayName.toLowerCase();
-        final phones = c.phones.map((p) => p.number).join(' ');
-        return name.contains(q.toLowerCase()) || phones.contains(q);
-      }).toList();
+      if (q.isEmpty) {
+        _filtered = List.from(_all);
+      } else {
+        _filtered = _all.where((c) {
+          final name = c.displayName.toLowerCase();
+          final phones = c.phones.map((p) => p.number).join(' ');
+          return name.contains(q.toLowerCase()) || phones.contains(q);
+        }).toList();
+      }
     });
   }
 
@@ -69,22 +103,35 @@ class _ContactsTabState extends State<ContactsTab> {
             border: InputBorder.none,
           ),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh, color: colors.lightText),
+            onPressed: _requestContactsWithTimeout,
+          )
+        ],
       ),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: colors.accent))
-          : _denied
+          : _filtered.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('Contacts permission denied',
-                          style: TextStyle(color: colors.danger)),
-                      const SizedBox(height: 12),
-                      ElevatedButton(onPressed: _load, child: const Text('Retry')),
-                      const TextButton(
-                        onPressed: openAppSettings,
-                        child: Text('Open Settings'),
+                      Text(
+                        _hasError
+                            ? 'Failed to load contacts from Android'
+                            : 'No contacts found',
+                        style: TextStyle(color: colors.lightText),
                       ),
+                      if (_hasError) ...[
+                        const SizedBox(height: 12),
+                        TextButton.icon(
+                          onPressed: _requestContactsWithTimeout,
+                          icon: Icon(Icons.refresh, color: colors.accent),
+                          label: Text('Retry',
+                              style: TextStyle(color: colors.accent)),
+                        ),
+                      ],
                     ],
                   ),
                 )
@@ -112,3 +159,4 @@ class _ContactsTabState extends State<ContactsTab> {
     );
   }
 }
+

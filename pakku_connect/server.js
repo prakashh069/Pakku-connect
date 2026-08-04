@@ -65,7 +65,9 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
+    console.log('DEBUG: Node Relay: Received JSON: ' + raw.toString());
     log('message_forwarded', { messageType: data.type });
+    console.log('DEBUG: Node Relay: Forwarding JSON: ' + raw.toString());
 
     // Forward verbatim (raw) to all other connected clients
     wss.clients.forEach((client) => {

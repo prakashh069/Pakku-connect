@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../../../core/services/crypto_service.dart';
 import '../../../core/constants/app_theme.dart';
 
@@ -20,18 +19,13 @@ class _ScanScreenState extends State<ScanScreen> {
   bool _verifying = false;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    debugPrint('ScanScreen: initState called');
+  }
+
   Future<void> _requestPermissions() async {
-    // Covers READ_PHONE_STATE / CALL_PHONE / ANSWER_PHONE_CALLS via the
-    // "phone" group, plus contacts and notifications.
-    await [
-      Permission.phone,
-      Permission.contacts,
-      Permission.notification,
-    ].request();
-    // READ_CALL_LOG has no permission_handler group — requested natively.
-    // This call is fire-and-forget by design (see docs/02_TDD.md §5.1):
-    // if denied, caller ID on eligible SDK levels gracefully falls back
-    // to "Unknown" rather than the app crashing or blocking pairing.
     try {
       await _platform.invokeMethod('requestCallLogPermission');
     } catch (e, st) {
@@ -40,6 +34,7 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
+    debugPrint('ScanScreen: _onDetect called');
     final code = capture.barcodes.firstOrNull?.rawValue;
     if (code == null || _verifying) return;
 
@@ -108,7 +103,26 @@ class _ScanScreenState extends State<ScanScreen> {
       appBar: AppBar(title: const Text('Scan QR Code')),
       body: Stack(
         children: [
-          MobileScanner(controller: controller, onDetect: _onDetect),
+          MobileScanner(
+            controller: controller,
+            onDetect: _onDetect,
+            errorBuilder: (context, error, child) {
+              debugPrint('ScanScreen: MobileScanner errorBuilder triggered: ${error.errorCode} - ${error.errorDetails?.message}');
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error, color: Colors.white, size: 50),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Scanner Error: ${error.errorCode}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           if (_verifying) const Center(child: CircularProgressIndicator()),
           if (_error != null)
             Center(

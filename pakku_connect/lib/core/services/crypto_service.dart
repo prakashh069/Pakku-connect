@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -20,7 +21,8 @@ class CryptoService {
   /// X509Certificate.getEncoded() returns DER, and a mismatch here means
   /// certificate pinning will always fail in production mode.
   static Future<String> certFingerprint(String derPath) async {
-    final bytes = await File(derPath).readAsBytes();
+    final byteData = await rootBundle.load(derPath);
+    final bytes = byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes);
     final digest = sha256.convert(bytes);
     return digest.toString(); // crypto's Digest.toString() is lowercase hex
   }
