@@ -63,29 +63,53 @@ class CallPopup extends StatelessWidget {
                   ],
                   const SizedBox(height: 24),
                   if (call.state == CallState.ringing)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.call_end),
-                          label: const Text('Decline'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: colors.danger,
-                            foregroundColor: Colors.white,
+                    if (call.direction == CallDirection.incoming)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.call_end),
+                            label: const Text('Decline'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.danger,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: manager.rejectCall,
                           ),
-                          onPressed: manager.rejectCall,
-                        ),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.call),
-                          label: const Text('Accept'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: colors.success,
-                            foregroundColor: Colors.white,
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.call),
+                            label: const Text('Accept'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.success,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: manager.answerCall,
                           ),
-                          onPressed: manager.answerCall,
-                        ),
-                      ],
-                    )
+                        ],
+                      )
+                    else
+                      Column(
+                        children: [
+                          Text(
+                            'Calling...',
+                            style: TextStyle(
+                              color: colors.accent,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.call_end),
+                            label: const Text('Cancel'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: colors.danger,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: manager.cancelOutgoingCall,
+                          ),
+                        ],
+                      )
                   else
                     Text(
                       'Call answered on phone',

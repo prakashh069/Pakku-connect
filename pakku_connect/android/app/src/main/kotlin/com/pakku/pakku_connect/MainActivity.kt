@@ -14,6 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.pakku.connect/platform"
+    private var pendingPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -50,18 +51,33 @@ class MainActivity : FlutterActivity() {
                             .apply()
                         result.success(true)
                     }
-                    "requestCallLogPermission" -> {
-                        // Fire-and-forget by design — see docs/04_IMPLEMENTATION_GUIDE.md
-                        // §8.2 and docs/02_TDD.md §5.1. Denial degrades caller-ID display
-                        // to "Unknown"; it never blocks pairing or crashes the service.
-                        if (ContextCompat.checkSelfPermission(
-                                this, Manifest.permission.READ_CALL_LOG
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            ActivityCompat.requestPermissions(
-                                this, arrayOf(Manifest.permission.READ_CALL_LOG), REQ_CALL_LOG)
+                    "requestAllPermissions" -> {
+                        val permissionsToRequest = mutableListOf(
+                            Manifest.permission.CALL_PHONE,
+                            Manifest.permission.READ_PHONE_STATE,
+                            Manifest.permission.READ_CONTACTS
+                        )
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            permissionsToRequest.add(Manifest.permission.ANSWER_PHONE_CALLS)
                         }
-                        result.success(true)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+
+                        val ungranted = permissionsToRequest.filter {
+                            ContextCompat.checkSelfPermission(this@MainActivity, it) != PackageManager.PERMISSION_GRANTED
+                        }
+
+                        if (ungranted.isEmpty()) {
+                            result.success(true)
+                        } else {
+                            pendingPermissionResult = result
+                            ActivityCompat.requestPermissions(
+                                this@MainActivity,
+                                ungranted.toTypedArray(),
+                                REQ_ALL_PERMISSIONS
+                            )
+                        }
                     }
                     "startPhoneStateService" -> {
                         val intent = Intent(this, PhoneStateService::class.java)
@@ -77,8 +93,17 @@ class MainActivity : FlutterActivity() {
             }
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (requestCode == REQ_ALL_PERMISSIONS) {
+            val granted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            pendingPermissionResult?.success(granted)
+            pendingPermissionResult = null
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
     companion object {
         private const val REQ_CALL_PHONE = 101
-        private const val REQ_CALL_LOG = 102
+        private const val REQ_ALL_PERMISSIONS = 102
     }
 }

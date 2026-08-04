@@ -347,67 +347,97 @@ class PhoneStateService : Service() {
     // ---------------------------------------------------------------
 
     private fun startPhoneListener() {
+        Log.d(TAG, "INSTRUMENTATION: startPhoneListener() invoked. isListenersStarted=$isListenersStarted")
         if (isListenersStarted) return
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
+        if (ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.READ_PHONE_STATE
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "INSTRUMENTATION: READ_PHONE_STATE not granted. Telephony listener not started.")
+            return
+        }
+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Log.d(TAG, "INSTRUMENTATION: Registering TelephonyCallback (API >= 31)")
                 val executor = ContextCompat.getMainExecutor(this)
                 val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
                     override fun onCallStateChanged(state: Int) {
+                        Log.d(TAG, "INSTRUMENTATION: TelephonyCallback.onCallStateChanged triggered with raw state=$state")
                         handleStateChange(state, null)
                     }
                 }
                 telephonyCallback = callback
                 telephonyManager?.registerTelephonyCallback(executor, callback)
+                Log.d(TAG, "INSTRUMENTATION: registerTelephonyCallback completed successfully")
             } else {
                 @Suppress("DEPRECATION")
                 val listener = object : PhoneStateListener() {
                     @Suppress("DEPRECATION")
                     override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                        Log.d(TAG, "INSTRUMENTATION: PhoneStateListener.onCallStateChanged triggered with raw state=$state")
                         handleStateChange(state, phoneNumber)
                     }
                 }
                 legacyListener = listener
                 @Suppress("DEPRECATION")
                 telephonyManager?.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+                Log.d(TAG, "INSTRUMENTATION: PhoneStateListener registered successfully (API < 31)")
             }
             isListenersStarted = true
+            Log.d(TAG, "INSTRUMENTATION: isListenersStarted set to true")
         } catch (e: SecurityException) {
-            Log.e(TAG, "Permission denied for TelephonyCallback/PhoneStateListener", e)
+            Log.e(TAG, "INSTRUMENTATION: SecurityException during listener registration", e)
             // Note: Degrades gracefully; the service won't crash, but it won't emit telephony updates.
         }
     }
 
     /** Shared by both the legacy and modern telephony callback paths. */
     private fun handleStateChange(state: Int, phoneNumber: String?) {
+        Log.d(TAG, "INSTRUMENTATION: handleStateChange invoked. Current lastState=$lastState, incoming state=$state")
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
+                Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_RINGING block")
                 val number = phoneNumber ?: "Unknown"
                 val msg = """{"type":"incoming_call","phoneNumber":"$number","contactName":""}"""
                 webSocket?.send(msg)
                 Log.d(TAG, "Sent incoming_call ($number)")
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
-                if (lastState == TelephonyManager.CALL_STATE_RINGING) {
+                val isIncomingAnswered = lastState == TelephonyManager.CALL_STATE_RINGING
+                val isOutgoingConnected = lastState == TelephonyManager.CALL_STATE_IDLE
+                Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_OFFHOOK block. isIncomingAnswered=$isIncomingAnswered, isOutgoingConnected=$isOutgoingConnected")
+
+                if (isIncomingAnswered || isOutgoingConnected) {
                     webSocket?.send("""{"type":"call_state","state":"answered"}""")
                     Log.d(TAG, "Sent call_state=answered")
+                } else {
+                    Log.d(TAG, "INSTRUMENTATION: condition (isIncomingAnswered || isOutgoingConnected) was FALSE. Skipping call_state=answered emission.")
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
+                Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_IDLE block")
                 if (lastState == TelephonyManager.CALL_STATE_RINGING ||
                     lastState == TelephonyManager.CALL_STATE_OFFHOOK
                 ) {
                     webSocket?.send("""{"type":"call_state","state":"ended"}""")
                     Log.d(TAG, "Sent call_state=ended")
+                } else {
+                    Log.d(TAG, "INSTRUMENTATION: CALL_STATE_IDLE block condition not met (lastState was not RINGING or OFFHOOK). Skipping ended emission.")
                 }
                 // Missed call: went straight from RINGING to IDLE, never OFFHOOK.
                 if (lastState == TelephonyManager.CALL_STATE_RINGING) {
                     showMissedCallNotification(phoneNumber ?: "Unknown")
                 }
             }
+            else -> {
+                Log.d(TAG, "INSTRUMENTATION: Unrecognized state block: $state")
+            }
         }
         lastState = state
+        Log.d(TAG, "INSTRUMENTATION: handleStateChange finished. lastState updated to $lastState")
     }
 
     private fun showMissedCallNotification(phoneNumber: String) {

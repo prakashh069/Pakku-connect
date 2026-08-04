@@ -53,15 +53,31 @@ class CallManager extends ChangeNotifier {
   }
 
   Future<void> rejectCall() async {
+    debugPrint("INSTRUMENTATION: rejectCall invoked.");
     if (_currentCall == null) return;
     _currentCall!.state = CallState.declinedRemotely;
     lastNativeError = null;
     notifyListeners();
+    debugPrint("INSTRUMENTATION: rejectCall sending reject_call over wsService");
+    wsService.send({'type': MessageTypes.rejectCall});
+    _clear();
+  }
+
+  Future<void> cancelOutgoingCall() async {
+    debugPrint("INSTRUMENTATION: cancelOutgoingCall invoked.");
+    if (_currentCall == null || _currentCall!.direction != CallDirection.outgoing) {
+        debugPrint("INSTRUMENTATION: cancelOutgoingCall aborted. _currentCall=$_currentCall");
+        return;
+    }
+    lastNativeError = null;
+    notifyListeners();
+    debugPrint("INSTRUMENTATION: cancelOutgoingCall sending reject_call over wsService");
     wsService.send({'type': MessageTypes.rejectCall});
     _clear();
   }
 
   Future<void> dial(String number) async {
+    debugPrint("INSTRUMENTATION: dial invoked for number: $number");
     _currentCall = Call(
       phoneNumber: number,
       direction: CallDirection.outgoing,

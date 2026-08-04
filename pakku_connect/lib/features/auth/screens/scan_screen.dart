@@ -25,11 +25,13 @@ class _ScanScreenState extends State<ScanScreen> {
     debugPrint('ScanScreen: initState called');
   }
 
-  Future<void> _requestPermissions() async {
+  Future<bool> _requestPermissions() async {
     try {
-      await _platform.invokeMethod('requestCallLogPermission');
+      final granted = await _platform.invokeMethod<bool>('requestAllPermissions');
+      return granted ?? false;
     } catch (e, st) {
-      debugPrint('ScanScreen: requestCallLogPermission failed (non-fatal): $e\n$st');
+      debugPrint('ScanScreen: requestAllPermissions failed: $e\n$st');
+      return false;
     }
   }
 
@@ -64,14 +66,11 @@ class _ScanScreenState extends State<ScanScreen> {
       return;
     }
 
-    await _requestPermissions();
-
     try {
       await _platform.invokeMethod(
         'saveWsEndpoint',
         {'ip': ip, 'port': port, 'certFp': certFp},
       );
-      await _platform.invokeMethod('startPhoneStateService');
       
       const storage = FlutterSecureStorage();
       await storage.write(key: 'ws_ip', value: ip);
@@ -83,8 +82,18 @@ class _ScanScreenState extends State<ScanScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('paired', true);
 
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
+      final granted = await _requestPermissions();
+
+      if (granted) {
+        await _platform.invokeMethod('startPhoneStateService');
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/home');
+        }
+      } else {
+        setState(() {
+          _verifying = false;
+          _error = 'READ_PHONE_STATE is required for remote call control.\n\nREAD_CONTACTS is required for contact synchronization.\n\nPlease grant these permissions in Android Settings to use the app.';
+        });
       }
     } catch (e, st) {
       debugPrint('ScanScreen: Native setup failed: $e\n$st');
