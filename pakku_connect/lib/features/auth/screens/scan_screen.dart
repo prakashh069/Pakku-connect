@@ -86,13 +86,20 @@ class _ScanScreenState extends State<ScanScreen> {
 
       if (granted) {
         await _platform.invokeMethod('startPhoneStateService');
+        // Request call screening role so CallScreeningPrototypeService
+        // can provide caller ID on Samsung Android 16+
+        try {
+          await _platform.invokeMethod('requestCallScreeningRole');
+        } catch (e) {
+          debugPrint('ScanScreen: requestCallScreeningRole failed (non-fatal): $e');
+        }
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/home');
         }
       } else {
         setState(() {
           _verifying = false;
-          _error = 'READ_PHONE_STATE is required for remote call control.\n\nREAD_CONTACTS is required for contact synchronization.\n\nPlease grant these permissions in Android Settings to use the app.';
+          _error = 'READ_PHONE_STATE and READ_CALL_LOG are required for remote call control.\n\nREAD_CONTACTS is required for contact synchronization.\n\nPlease grant these permissions in Android Settings to use the app.';
         });
       }
     } catch (e, st) {

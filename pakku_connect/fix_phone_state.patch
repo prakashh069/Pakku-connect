@@ -1,0 +1,81 @@
+--- android/app/src/main/kotlin/com/pakku/pakku_connect/PhoneStateService.kt
++++ android/app/src/main/kotlin/com/pakku/pakku_connect/PhoneStateService.kt
+@@ -40,11 +40,7 @@
+     private var webSocket: WebSocket? = null
+     private var telephonyManager: TelephonyManager? = null
+ 
+-    // Legacy path (SDK < 31)
+-    private var legacyListener: PhoneStateListener? = null
+-
+-    // Modern path (SDK 31+)
+-    private var telephonyCallback: TelephonyCallback? = null
++    private var callStateReceiver: android.content.BroadcastReceiver? = null
+ 
+     private var lastState = TelephonyManager.CALL_STATE_IDLE
+     private var missedCallNotificationId = 100
+@@ -455,27 +451,19 @@
+         }
+ 
+         try {
+-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+-                Log.d(TAG, "INSTRUMENTATION: Registering TelephonyCallback (API >= 31)")
+-                val executor = ContextCompat.getMainExecutor(this)
+-                val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
+-                    override fun onCallStateChanged(state: Int) {
+-                        Log.d(TAG, "INSTRUMENTATION: TelephonyCallback.onCallStateChanged triggered with raw state=$state")
+-                        handleStateChange(state, null)
+-                    }
+-                }
+-                telephonyCallback = callback
+-                telephonyManager?.registerTelephonyCallback(executor, callback)
+-                Log.d(TAG, "INSTRUMENTATION: registerTelephonyCallback completed successfully")
+-            } else {
+-                @Suppress("DEPRECATION")
+-                val listener = object : PhoneStateListener() {
+-                    @Suppress("DEPRECATION")
+-                    override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+-                        Log.d(TAG, "INSTRUMENTATION: PhoneStateListener.onCallStateChanged triggered with raw state=$state")
+-                        handleStateChange(state, phoneNumber)
+-                    }
+-                }
+-                legacyListener = listener
+-                @Suppress("DEPRECATION")
+-                telephonyManager?.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+-                Log.d(TAG, "INSTRUMENTATION: PhoneStateListener registered successfully (API < 31)")
+-            }
++            val receiver = object : android.content.BroadcastReceiver() {
++                override fun onReceive(context: Context?, intent: Intent?) {
++                    if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
++                        val stateStr = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
++                        val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
++                        val state = when (stateStr) {
++                            TelephonyManager.EXTRA_STATE_RINGING -> TelephonyManager.CALL_STATE_RINGING
++                            TelephonyManager.EXTRA_STATE_OFFHOOK -> TelephonyManager.CALL_STATE_OFFHOOK
++                            else -> TelephonyManager.CALL_STATE_IDLE
++                        }
++                        Log.d(TAG, "INSTRUMENTATION: BroadcastReceiver triggered with stateStr=$stateStr, number=${number != null}")
++                        handleStateChange(state, number)
++                    }
++                }
++            }
++            callStateReceiver = receiver
++            val filter = android.content.IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
++            registerReceiver(receiver, filter)
++            Log.d(TAG, "INSTRUMENTATION: BroadcastReceiver registered successfully")
+             isListenersStarted = true
+             Log.d(TAG, "INSTRUMENTATION: isListenersStarted set to true")
+@@ -578,13 +566,8 @@
+         networkCallback = null
+ 
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+-            telephonyCallback?.let { telephonyManager?.unregisterTelephonyCallback(it) }
+-        } else {
+-            @Suppress("DEPRECATION")
+-            legacyListener?.let { telephonyManager?.listen(it, PhoneStateListener.LISTEN_NONE) }
+-        }
+-        telephonyCallback = null
+-        legacyListener = null
++        callStateReceiver?.let { unregisterReceiver(it) }
++        callStateReceiver = null
+         isListenersStarted = false
+         running.set(false)

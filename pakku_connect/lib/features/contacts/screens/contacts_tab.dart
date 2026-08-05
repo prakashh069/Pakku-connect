@@ -150,7 +150,10 @@ class _ContactsTabState extends State<ContactsTab> {
                           : null,
                       onTap: () {
                         if (c.phones.isNotEmpty) {
-                          context.read<CallManager>().dial(c.phones.first.number);
+                          context.read<CallManager>().dial(
+                            c.phones.first.number,
+                            contactName: c.displayName,
+                          );
                         }
                       },
                     );

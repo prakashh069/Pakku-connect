@@ -129,6 +129,10 @@ class _RootRouterState extends State<RootRouter> {
         try {
           const platform = MethodChannel('com.pakku.connect/platform');
           await platform.invokeMethod('startPhoneStateService');
+          // Request call screening role for caller ID on Samsung Android 16+
+          try {
+            await platform.invokeMethod('requestCallScreeningRole');
+          } catch (_) {}
         } catch (e, st) {
           debugPrint('Failed to start PhoneStateService: $e\n$st');
         }

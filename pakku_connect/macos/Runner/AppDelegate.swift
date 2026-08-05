@@ -37,7 +37,13 @@ class AppDelegate: FlutterAppDelegate {
             self?.updateMenuBarStatus(state: state)
             result(nil)
         } else if call.method == "checkWindowVisibility" {
-            let isVisible = self?.mainFlutterWindow?.isVisible == true && self?.mainFlutterWindow?.isMiniaturized == false
+            let isAppHidden = NSApp.isHidden
+            let isWindowVisible = self?.mainFlutterWindow?.isVisible == true
+            let isWindowMiniaturized = self?.mainFlutterWindow?.isMiniaturized == true
+            let isOnActiveSpace = self?.mainFlutterWindow?.isOnActiveSpace ?? false
+            let isAppActive = NSApp.isActive
+            
+            let isVisible = !isAppHidden && isWindowVisible && !isWindowMiniaturized && isOnActiveSpace && isAppActive
             result(isVisible)
         } else {
             result(FlutterMethodNotImplemented)
@@ -47,9 +53,17 @@ class AppDelegate: FlutterAppDelegate {
       CallPanelController.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
       
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didBecomeKeyNotification, object: mainFlutterWindow)
+      NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didResignKeyNotification, object: mainFlutterWindow)
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didMiniaturizeNotification, object: mainFlutterWindow)
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didDeminiaturizeNotification, object: mainFlutterWindow)
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.willCloseNotification, object: mainFlutterWindow)
+      
+      NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSApplication.didHideNotification, object: NSApp)
+      NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSApplication.didUnhideNotification, object: NSApp)
+      NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSApplication.didBecomeActiveNotification, object: NSApp)
+      NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSApplication.didResignActiveNotification, object: NSApp)
+      
+      NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
   }
 
   func setupMenuBar() {
@@ -107,8 +121,19 @@ class AppDelegate: FlutterAppDelegate {
     windowVisibilityChanged()
   }
 
-  @objc func windowVisibilityChanged() {
-      let isVisible = mainFlutterWindow?.isVisible == true && mainFlutterWindow?.isMiniaturized == false
+  @objc func windowVisibilityChanged(_ notification: Notification? = nil) {
+      if notification?.name == NSWindow.willCloseNotification {
+          flutterMethodChannel?.invokeMethod("windowVisibilityChanged", arguments: ["isVisible": false])
+          return
+      }
+      
+      let isAppHidden = NSApp.isHidden
+      let isWindowVisible = mainFlutterWindow?.isVisible == true
+      let isWindowMiniaturized = mainFlutterWindow?.isMiniaturized == true
+      let isOnActiveSpace = mainFlutterWindow?.isOnActiveSpace ?? false
+      let isAppActive = NSApp.isActive
+      
+      let isVisible = !isAppHidden && isWindowVisible && !isWindowMiniaturized && isOnActiveSpace && isAppActive
       flutterMethodChannel?.invokeMethod("windowVisibilityChanged", arguments: ["isVisible": isVisible])
   }
 

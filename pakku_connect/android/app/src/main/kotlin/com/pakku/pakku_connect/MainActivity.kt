@@ -21,6 +21,16 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "requestCallScreeningRole" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            val roleManager = getSystemService(Context.ROLE_SERVICE) as android.app.role.RoleManager
+                            val intent = roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_CALL_SCREENING)
+                            startActivityForResult(intent, 1)
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
+                    }
                     "makeCall" -> {
                         val number = call.argument<String>("phoneNumber")
                         if (number == null) {
@@ -59,6 +69,7 @@ class MainActivity : FlutterActivity() {
                         )
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                             permissionsToRequest.add(Manifest.permission.ANSWER_PHONE_CALLS)
+                            permissionsToRequest.add(Manifest.permission.READ_CALL_LOG)
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)

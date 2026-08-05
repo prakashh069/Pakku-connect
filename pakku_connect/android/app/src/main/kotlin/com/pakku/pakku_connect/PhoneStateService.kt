@@ -38,11 +38,7 @@ class PhoneStateService : Service() {
     private var webSocket: WebSocket? = null
     private var telephonyManager: TelephonyManager? = null
 
-    // Legacy path (SDK < 31)
-    private var legacyListener: PhoneStateListener? = null
-
-    // Modern path (SDK 31+)
-    private var telephonyCallback: TelephonyCallback? = null
+    private var callStateReceiver: android.content.BroadcastReceiver? = null
 
     private var lastState = TelephonyManager.CALL_STATE_IDLE
     private var missedCallNotificationId = 100
@@ -454,32 +450,53 @@ class PhoneStateService : Service() {
         }
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                Log.d(TAG, "INSTRUMENTATION: Registering TelephonyCallback (API >= 31)")
-                val executor = ContextCompat.getMainExecutor(this)
-                val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-                    override fun onCallStateChanged(state: Int) {
-                        Log.d(TAG, "INSTRUMENTATION: TelephonyCallback.onCallStateChanged triggered with raw state=$state")
-                        handleStateChange(state, null)
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    val timestamp = System.currentTimeMillis()
+                    Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: BroadcastReceiver triggered. Action: ${intent?.action}")
+                    
+                    if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
+                        val stateStr = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+                        val hasNumberExtra = intent.hasExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+                        var number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+                        
+                        if (number == null && latestScreenedNumber != null) {
+                            number = latestScreenedNumber
+                            Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: Using number from CallScreeningService: $number")
+                            latestScreenedNumber = null // Reset after use
+                        }
+                        
+                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: stateStr=$stateStr")
+                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: hasExtra(EXTRA_INCOMING_NUMBER)=$hasNumberExtra")
+                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: EXTRA_INCOMING_NUMBER=${number != null}")
+                        
+                        if (intent.extras != null) {
+                            val bundle = intent.extras!!
+                            val keys = bundle.keySet()
+                            for (key in keys) {
+                                val value = bundle.get(key)
+                                Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: Extra Key: $key, Value type: ${value?.javaClass?.simpleName}, isNull: ${value == null}")
+                            }
+                        }
+
+                        val readPhoneStateGranted = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        val readCallLogGranted = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.READ_CALL_LOG) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: READ_PHONE_STATE granted: $readPhoneStateGranted")
+                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: READ_CALL_LOG granted: $readCallLogGranted")
+
+                        val state = when (stateStr) {
+                            TelephonyManager.EXTRA_STATE_RINGING -> TelephonyManager.CALL_STATE_RINGING
+                            TelephonyManager.EXTRA_STATE_OFFHOOK -> TelephonyManager.CALL_STATE_OFFHOOK
+                            else -> TelephonyManager.CALL_STATE_IDLE
+                        }
+                        handleStateChange(state, number)
                     }
                 }
-                telephonyCallback = callback
-                telephonyManager?.registerTelephonyCallback(executor, callback)
-                Log.d(TAG, "INSTRUMENTATION: registerTelephonyCallback completed successfully")
-            } else {
-                @Suppress("DEPRECATION")
-                val listener = object : PhoneStateListener() {
-                    @Suppress("DEPRECATION")
-                    override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                        Log.d(TAG, "INSTRUMENTATION: PhoneStateListener.onCallStateChanged triggered with raw state=$state")
-                        handleStateChange(state, phoneNumber)
-                    }
-                }
-                legacyListener = listener
-                @Suppress("DEPRECATION")
-                telephonyManager?.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
-                Log.d(TAG, "INSTRUMENTATION: PhoneStateListener registered successfully (API < 31)")
             }
+            callStateReceiver = receiver
+            val filter = android.content.IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
+            registerReceiver(receiver, filter)
+            Log.d(TAG, "INSTRUMENTATION: BroadcastReceiver registered successfully")
             isListenersStarted = true
             Log.d(TAG, "INSTRUMENTATION: isListenersStarted set to true")
         } catch (e: SecurityException) {
@@ -577,14 +594,8 @@ class PhoneStateService : Service() {
         }
         networkCallback = null
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            telephonyCallback?.let { telephonyManager?.unregisterTelephonyCallback(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            legacyListener?.let { telephonyManager?.listen(it, PhoneStateListener.LISTEN_NONE) }
-        }
-        telephonyCallback = null
-        legacyListener = null
+        callStateReceiver?.let { unregisterReceiver(it) }
+        callStateReceiver = null
         isListenersStarted = false
         running.set(false)
 
@@ -605,6 +616,7 @@ class PhoneStateService : Service() {
     companion object {
         private const val TAG = "PhoneStateService"
         private const val CHANNEL_ID = "pakku_call_service"
+        var latestScreenedNumber: String? = null
         val running = AtomicBoolean(false)
     }
 }

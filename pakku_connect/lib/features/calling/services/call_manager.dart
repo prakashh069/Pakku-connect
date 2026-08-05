@@ -58,41 +58,97 @@ class CallManager extends ChangeNotifier {
 
   Call? get currentCall => _currentCall;
 
+  bool _isSamePhoneNumber(String a, String b) {
+    final cleanA = a.replaceAll(RegExp(r'\D'), '');
+    final cleanB = b.replaceAll(RegExp(r'\D'), '');
+    debugPrint("DEBUG-CALL: Comparing cleanA=$cleanA with cleanB=$cleanB");
+    if (cleanA.isEmpty || cleanB.isEmpty) return false;
+    if (cleanA == cleanB) return true;
+    
+    // Country code fallback: compare the ends if they are reasonably long (>= 7 digits)
+    if (cleanA.length >= 7 && cleanB.length >= 7) {
+      if (cleanA.endsWith(cleanB) || cleanB.endsWith(cleanA)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String? _resolveContactName(String phoneNumber, String? providedName) {
+    debugPrint("DEBUG-CALL: Resolving contact for incoming phone number: $phoneNumber");
+    if (providedName != null && providedName.isNotEmpty) {
+      debugPrint("DEBUG-CALL: Provided name exists: $providedName");
+      return providedName;
+    }
+    final cleanTarget = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    debugPrint("DEBUG-CALL: Normalized phone number: $cleanTarget");
+    debugPrint("DEBUG-CALL: Number of synchronized contacts: ${wsService.cachedContacts.length}");
+    
+    for (final contact in wsService.cachedContacts) {
+      for (final p in contact.phones) {
+        if (_isSamePhoneNumber(p.number, phoneNumber)) {
+          debugPrint("DEBUG-CALL: Matching contact found: true");
+          debugPrint("DEBUG-CALL: Resolved contact name: ${contact.displayName}");
+          return contact.displayName;
+        }
+      }
+    }
+    debugPrint("DEBUG-CALL: Matching contact found: false");
+    debugPrint("DEBUG-CALL: Resolved contact name: Unknown");
+    return providedName;
+  }
+
   void handleIncoming(String phoneNumber, String? contactName) {
-    if (_currentCall?.state == CallState.ringing) return;
+    final timestamp = DateTime.now().toIso8601String();
+    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: ENTER CallManager.handleIncoming(phoneNumber: $phoneNumber)");
+    
+    if (_currentCall?.state == CallState.ringing) {
+      debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: EXIT CallManager.handleIncoming (already ringing)");
+      return;
+    }
     lastNativeError = null;
+    
+    final resolvedName = _resolveContactName(phoneNumber, contactName);
+
     _currentCall = Call(
       phoneNumber: phoneNumber,
-      contactName: contactName,
+      contactName: resolvedName,
       direction: CallDirection.incoming,
     );
     notifyListeners();
 
-    if (!windowVisibilityService.isVisible) {
-      callPresenter?.showCall(_currentCall!);
-    }
+    final isVisible = windowVisibilityService.isVisible;
+    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: windowVisibilityService.isVisible = $isVisible");
+    
+    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Calling CallPresenter.showCall()");
+    callPresenter?.showCall(_currentCall!);
+    
+    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: EXIT CallManager.handleIncoming");
   }
 
   void handleCallState(String state) {
+    final timestamp = DateTime.now().toIso8601String();
+    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: ENTER CallManager.handleCallState(state: $state)");
+    
     if (state == 'answered') {
-      if (_currentCall?.state == CallState.answeredRemotely) return; // ignore duplicate
+      if (_currentCall?.state == CallState.answeredRemotely) {
+        debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: EXIT CallManager.handleCallState (already answeredRemotely)");
+        return;
+      }
       _currentCall?.state = CallState.answeredRemotely;
       
       if (_currentCall?.direction == CallDirection.incoming) {
         _stopwatch.start();
         _durationTimer?.cancel();
 
-        if (!windowVisibilityService.isVisible) {
-          callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
-        }
+        debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Calling CallPresenter.updateCall (0s)");
+        callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
 
         _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
           callDuration = _stopwatch.elapsed;
           notifyListeners();
           
-          if (!windowVisibilityService.isVisible) {
-            callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
-          }
+          callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
         });
       }
       
@@ -162,11 +218,15 @@ class CallManager extends ChangeNotifier {
     wsService.send(payload);
   }
 
-  Future<void> dial(String number) async {
+  Future<void> dial(String number, {String? contactName}) async {
     final cleanNumber = number.replaceAll(RegExp(r'[^\d+]'), '');
     debugPrint("INSTRUMENTATION: dial invoked for number: $number (cleaned: $cleanNumber)");
+    
+    final resolvedName = _resolveContactName(cleanNumber, contactName);
+
     _currentCall = Call(
       phoneNumber: cleanNumber,
+      contactName: resolvedName,
       direction: CallDirection.outgoing,
       state: CallState.ringing,
     );

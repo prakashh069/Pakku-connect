@@ -28,6 +28,7 @@ class WebSocketService {
   void Function(bool connected)? onConnectionChange;
   void Function(DeviceSessionState state)? onDeviceStateChanged;
   void Function(List<RemoteContact> contacts)? onContactsReceived;
+  List<RemoteContact> cachedContacts = [];
   void Function(String action, bool success, String? error)? onActionResult;
 
   void connect(String url) {
@@ -136,6 +137,7 @@ class WebSocketService {
           final contacts = contactsData
               .map((e) => RemoteContact.fromJson(Map<String, dynamic>.from(e)))
               .toList();
+          cachedContacts = contacts;
           onContactsReceived?.call(contacts);
         }
       } else if (type == MessageTypes.actionResult) {
