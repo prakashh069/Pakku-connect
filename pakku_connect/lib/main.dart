@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_theme.dart';
 import 'core/services/websocket_service.dart';
 import 'features/calling/services/call_manager.dart';
-import 'features/calling/widgets/call_popup.dart';
 import 'features/auth/screens/qr_pairing_screen.dart';
 import 'features/auth/screens/scan_screen.dart';
 import 'features/contacts/screens/contacts_tab.dart';
@@ -48,14 +47,6 @@ class PakkuApp extends StatelessWidget {
         title: 'Pakku Connect',
         navigatorKey: navigatorKey,
         theme: buildAppTheme(),
-        builder: (context, child) {
-          return Stack(
-            children: [
-              child!,
-              const CallPopup(),
-            ],
-          );
-        },
         initialRoute: '/',
         routes: {
           '/': (_) => const RootRouter(),
@@ -165,7 +156,8 @@ class _RootRouterState extends State<RootRouter> {
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/home');
         }
-      } else {
+      }
+      if (mounted) {
         setState(() {
           _isLoading = false;
         });

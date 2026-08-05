@@ -92,7 +92,9 @@ class PhoneStateService : Service() {
             broadcastIntent.setPackage(packageName)
             sendBroadcast(broadcastIntent)
             
-            stopSelf()
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                stopSelf()
+            }, 500)
             return START_NOT_STICKY
         }
 
