@@ -10,6 +10,9 @@ import '../models/contact.dart';
 enum DeviceSessionState {
   connected,
   disconnected,
+  connecting,
+  reconnecting,
+  paused,
 }
 
 class WebSocketService {
@@ -18,6 +21,7 @@ class WebSocketService {
   int _attempt = 0;
   String? _url;
   bool _isIntentionalDisconnect = false;
+  bool _paused = false;
 
   void Function(String phoneNumber, String? contactName)? onIncomingCall;
   void Function(String state)? onCallState; // "answered" | "ended"
@@ -30,11 +34,13 @@ class WebSocketService {
     _url = url;
     _attempt = 0;
     _isIntentionalDisconnect = false;
+    _paused = false;
+    onDeviceStateChanged?.call(DeviceSessionState.connecting);
     _connectInternal();
   }
 
   void _connectInternal() {
-    if (_url == null) return;
+    if (_url == null || _paused) return;
     _channel?.sink.close();
 
     try {
@@ -79,11 +85,12 @@ class WebSocketService {
   }
 
   void _scheduleReconnect() {
-    if (_isIntentionalDisconnect) return;
+    if (_isIntentionalDisconnect || _paused) return;
     
     _reconnectTimer?.cancel();
     final delay = Duration(seconds: (_attempt < 5) ? (1 << _attempt) : 30);
     _attempt++;
+    onDeviceStateChanged?.call(DeviceSessionState.reconnecting);
     _reconnectTimer = Timer(delay, _connectInternal);
   }
 
@@ -156,5 +163,20 @@ class WebSocketService {
     _isIntentionalDisconnect = true;
     _reconnectTimer?.cancel();
     _channel?.sink.close();
+    onDeviceStateChanged?.call(DeviceSessionState.disconnected);
+  }
+
+  void pause() {
+    _paused = true;
+    _isIntentionalDisconnect = true;
+    _reconnectTimer?.cancel();
+    _channel?.sink.close();
+    onDeviceStateChanged?.call(DeviceSessionState.paused);
+  }
+
+  void resume() {
+    if (!_paused || _url == null) return;
+    _paused = false;
+    connect(_url!);
   }
 }

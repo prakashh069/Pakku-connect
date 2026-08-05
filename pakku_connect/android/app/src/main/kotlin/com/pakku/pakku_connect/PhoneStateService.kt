@@ -4,6 +4,10 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -24,6 +28,7 @@ import java.security.SecureRandom
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
@@ -45,9 +50,33 @@ class PhoneStateService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isListenersStarted = false
 
+    private var reconnectAttempt = 0
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
     override fun onCreate() {
         super.onCreate()
+        running.set(true)
         createNotificationChannel()
+        startNetworkMonitoring()
+    }
+
+    private fun startNetworkMonitoring() {
+        if (networkCallback != null) return
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                Log.d(TAG, "Network available, triggering immediate reconnect")
+                mainHandler.removeCallbacks(reconnectRunnable)
+                mainHandler.post { startWebSocket() }
+            }
+        }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+            
+        connectivityManager.registerNetworkCallback(request, callback)
+        networkCallback = callback
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -151,7 +180,12 @@ class PhoneStateService : Service() {
     private fun scheduleReconnect() {
         // Remove any existing reconnect task before scheduling another
         mainHandler.removeCallbacks(reconnectRunnable)
-        mainHandler.postDelayed(reconnectRunnable, 5000)
+        val maxDelay = 30000L
+        val delay = if (reconnectAttempt < 5) (1L shl reconnectAttempt) * 1000L else maxDelay
+        reconnectAttempt++
+        
+        Log.d(TAG, "Scheduling reconnect in ${delay}ms")
+        mainHandler.postDelayed(reconnectRunnable, delay)
     }
 
     private fun startWebSocket() {
@@ -185,6 +219,7 @@ class PhoneStateService : Service() {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d(TAG, "WSS connected")
+                reconnectAttempt = 0
                 try {
                     val msg = JSONObject()
                     msg.put("type", "device_state")
@@ -200,12 +235,14 @@ class PhoneStateService : Service() {
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WSS failure: ${t.message}")
-                scheduleReconnect()
+                if (this@PhoneStateService.webSocket === webSocket) {
+                    scheduleReconnect()
+                }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d(TAG, "WSS closed: $code $reason")
-                if (code != 1000) {
+                if (this@PhoneStateService.webSocket === webSocket && code != 1000) {
                     scheduleReconnect()
                 }
             }
@@ -272,12 +309,17 @@ class PhoneStateService : Service() {
                             val number = json.optString("number")
                             if (number.isNotEmpty()) {
                                 try {
-                                    val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$number"))
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    startActivity(intent)
-                                    Log.d(TAG, "Native dial executed")
+                                    val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                                    if (ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                        tm.placeCall(Uri.parse("tel:$number"), android.os.Bundle())
+                                        Log.d(TAG, "Native dial executed via TelecomManager")
+                                    } else {
+                                        Log.e(TAG, "Missing CALL_PHONE permission for dial")
+                                    }
                                 } catch (e: SecurityException) {
                                     Log.e(TAG, "Permission denied for dial", e)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to dial", e)
                                 }
                             }
                         }
@@ -529,6 +571,12 @@ class PhoneStateService : Service() {
         }
         httpClient = null
 
+        networkCallback?.let {
+            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            connectivityManager.unregisterNetworkCallback(it)
+        }
+        networkCallback = null
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             telephonyCallback?.let { telephonyManager?.unregisterTelephonyCallback(it) }
         } else {
@@ -538,6 +586,7 @@ class PhoneStateService : Service() {
         telephonyCallback = null
         legacyListener = null
         isListenersStarted = false
+        running.set(false)
 
         super.onDestroy()
     }
@@ -556,5 +605,6 @@ class PhoneStateService : Service() {
     companion object {
         private const val TAG = "PhoneStateService"
         private const val CHANNEL_ID = "pakku_call_service"
+        val running = AtomicBoolean(false)
     }
 }

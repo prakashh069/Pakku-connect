@@ -11,6 +11,7 @@ import 'features/calling/widgets/call_popup.dart';
 import 'features/auth/screens/qr_pairing_screen.dart';
 import 'features/auth/screens/scan_screen.dart';
 import 'features/contacts/screens/contacts_tab.dart';
+import 'core/services/window_visibility_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,9 +27,13 @@ class PakkuApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         Provider(create: (_) => WebSocketService()),
-        ChangeNotifierProxyProvider<WebSocketService, CallManager>(
-          create: (ctx) => CallManager(ctx.read<WebSocketService>()),
-          update: (_, ws, previous) => previous ?? CallManager(ws),
+        Provider(
+          create: (_) => WindowVisibilityService()..init(),
+          dispose: (_, wvs) => wvs.dispose(),
+        ),
+        ChangeNotifierProxyProvider2<WebSocketService, WindowVisibilityService, CallManager>(
+          create: (ctx) => CallManager(ctx.read<WebSocketService>(), ctx.read<WindowVisibilityService>()),
+          update: (_, ws, wvs, previous) => previous ?? CallManager(ws, wvs),
         ),
       ],
       child: MaterialApp(
@@ -101,11 +106,20 @@ class _RootRouterState extends State<RootRouter> {
       };
 
       ws.onDeviceStateChanged = (newState) async {
-        if (!_isPaired && newState == DeviceSessionState.connected) {
+        if (!_isPaired && (newState == DeviceSessionState.connected || newState == DeviceSessionState.reconnecting || newState == DeviceSessionState.connecting)) {
           await _handleInitialPairingCompletion(prefs);
         }
         _handleSessionUpdate(newState);
       };
+
+      const menuBarChannel = MethodChannel('com.pakku.connect/menuBar');
+      menuBarChannel.setMethodCallHandler((call) async {
+        if (call.method == 'pause') {
+          ws.pause();
+        } else if (call.method == 'resume') {
+          ws.resume();
+        }
+      });
 
       final port = dotenv.env['PAKKU_WS_PORT'] ?? '8080';
       ws.connect('wss://127.0.0.1:$port');
@@ -139,6 +153,10 @@ class _RootRouterState extends State<RootRouter> {
   }
 
   void _handleSessionUpdate(DeviceSessionState newState) {
+    if (Platform.isMacOS) {
+      const menuBarChannel = MethodChannel('com.pakku.connect/menuBar');
+      menuBarChannel.invokeMethod('updateStatus', {'state': newState.name});
+    }
     if (mounted) {
       setState(() {
         _sessionState = newState;
@@ -181,15 +199,15 @@ class HomeScreen extends StatelessWidget {
       body: Platform.isMacOS
           ? Column(
               children: [
-                if (sessionState == DeviceSessionState.disconnected)
+                if (sessionState == DeviceSessionState.disconnected || sessionState == DeviceSessionState.reconnecting || sessionState == DeviceSessionState.connecting || sessionState == DeviceSessionState.paused)
                   Container(
                     width: double.infinity,
-                    color: Colors.red.shade900,
+                    color: sessionState == DeviceSessionState.paused ? Colors.orange.shade900 : (sessionState == DeviceSessionState.connecting || sessionState == DeviceSessionState.reconnecting) ? Colors.blue.shade900 : Colors.red.shade900,
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: const Text(
-                      'Phone is offline',
+                    child: Text(
+                      sessionState == DeviceSessionState.paused ? 'Connection paused' : (sessionState == DeviceSessionState.connecting || sessionState == DeviceSessionState.reconnecting) ? 'Connecting...' : 'Phone is offline',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
                 const Expanded(child: ContactsTab()),

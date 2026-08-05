@@ -5,12 +5,19 @@ import 'package:flutter/services.dart';
 import '../../../core/models/call.dart';
 import '../../../core/constants/message_types.dart';
 import '../../../core/services/websocket_service.dart';
+import '../../../core/services/window_visibility_service.dart';
+import '../../../core/call/call_presenter.dart';
+import '../../../core/call/mac_call_presenter.dart';
 
 class CallManager extends ChangeNotifier {
   Call? _currentCall;
   final WebSocketService wsService;
+  final WindowVisibilityService windowVisibilityService;
+  CallPresenter? callPresenter;
   final MethodChannel _platform =
       const MethodChannel('com.pakku.connect/platform');
+  final MethodChannel _callPanelChannel =
+      const MethodChannel('com.pakku.connect/callPanel');
 
   String? lastNativeError;
 
@@ -19,8 +26,34 @@ class CallManager extends ChangeNotifier {
   Duration callDuration = Duration.zero;
   bool isEnding = false;
 
-  CallManager(this.wsService) {
+  CallManager(this.wsService, this.windowVisibilityService) {
     wsService.onActionResult = handleActionResult;
+    
+    if (Platform.isMacOS) {
+      callPresenter = MacCallPresenter();
+    }
+
+    _callPanelChannel.setMethodCallHandler((call) async {
+      if (call.method == 'acceptCall') {
+        answerCall();
+      } else if (call.method == 'declineCall') {
+        rejectCall();
+      }
+    });
+
+    windowVisibilityService.addListener(_onWindowVisibilityChanged);
+  }
+
+  void _onWindowVisibilityChanged() {
+    if (windowVisibilityService.isVisible) {
+      callPresenter?.dismissCall();
+    }
+  }
+
+  @override
+  void dispose() {
+    windowVisibilityService.removeListener(_onWindowVisibilityChanged);
+    super.dispose();
   }
 
   Call? get currentCall => _currentCall;
@@ -34,6 +67,10 @@ class CallManager extends ChangeNotifier {
       direction: CallDirection.incoming,
     );
     notifyListeners();
+
+    if (!windowVisibilityService.isVisible) {
+      callPresenter?.showCall(_currentCall!);
+    }
   }
 
   void handleCallState(String state) {
@@ -44,9 +81,18 @@ class CallManager extends ChangeNotifier {
       if (_currentCall?.direction == CallDirection.incoming) {
         _stopwatch.start();
         _durationTimer?.cancel();
+
+        if (!windowVisibilityService.isVisible) {
+          callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
+        }
+
         _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
           callDuration = _stopwatch.elapsed;
           notifyListeners();
+          
+          if (!windowVisibilityService.isVisible) {
+            callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
+          }
         });
       }
       
@@ -58,6 +104,9 @@ class CallManager extends ChangeNotifier {
       _currentCall?.state = CallState.ended;
       isEnding = false;
       notifyListeners();
+
+      callPresenter?.dismissCall();
+
       Future.delayed(const Duration(seconds: 2), _clear);
     }
   }
@@ -143,5 +192,7 @@ class CallManager extends ChangeNotifier {
     isEnding = false;
     _currentCall = null;
     notifyListeners();
+    
+    callPresenter?.dismissCall();
   }
 }
