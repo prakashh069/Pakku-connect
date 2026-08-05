@@ -61,6 +61,18 @@ class MainActivity : FlutterActivity() {
                             .apply()
                         result.success(true)
                     }
+                    "hasNotificationAccess" -> {
+                        val isGranted = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(this@MainActivity).contains(packageName)
+                        result.success(isGranted)
+                    }
+                    "requestNotificationAccess" -> {
+                        val isGranted = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(this@MainActivity).contains(packageName)
+                        if (!isGranted) {
+                            val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                            startActivity(intent)
+                        }
+                        result.success(true)
+                    }
                     "requestAllPermissions" -> {
                         val permissionsToRequest = mutableListOf(
                             Manifest.permission.CALL_PHONE,

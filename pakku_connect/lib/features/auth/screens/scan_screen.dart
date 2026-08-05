@@ -85,6 +85,11 @@ class _ScanScreenState extends State<ScanScreen> {
       final granted = await _requestPermissions();
 
       if (granted) {
+        final hasNotifAccess = await _platform.invokeMethod<bool>('hasNotificationAccess') ?? false;
+        if (!hasNotifAccess) {
+            await _platform.invokeMethod('requestNotificationAccess');
+        }
+
         await _platform.invokeMethod('startPhoneStateService');
         // Request call screening role so CallScreeningPrototypeService
         // can provide caller ID on Samsung Android 16+

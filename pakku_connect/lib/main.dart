@@ -106,7 +106,7 @@ class _RootRouterState extends State<RootRouter> {
       };
 
       ws.onDeviceStateChanged = (newState) async {
-        if (!_isPaired && (newState == DeviceSessionState.connected || newState == DeviceSessionState.reconnecting || newState == DeviceSessionState.connecting)) {
+        if (!_isPaired && newState == DeviceSessionState.connected) {
           await _handleInitialPairingCompletion(prefs);
         }
         _handleSessionUpdate(newState);
@@ -199,6 +199,22 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pakku Connect'),
+        actions: Platform.isMacOS
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'Disconnect',
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('paired', false);
+                    if (context.mounted) {
+                      context.read<WebSocketService>().disconnect();
+                      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                    }
+                  },
+                ),
+              ]
+            : null,
       ),
       body: Platform.isMacOS
           ? Column(

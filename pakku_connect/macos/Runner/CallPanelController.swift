@@ -28,7 +28,9 @@ class CallPanelController {
                 if let args = call.arguments as? [String: Any] {
                     let name = args["name"] as? String ?? "Unknown"
                     let number = args["number"] as? String ?? "Unknown"
-                    self?.showCall(name: name, number: number)
+                    let state = args["state"] as? String ?? "ringing"
+                    let direction = args["direction"] as? String ?? "incoming"
+                    self?.showCall(name: name, number: number, state: state, direction: direction)
                 }
                 result(nil)
             case "updateCall":
@@ -149,13 +151,14 @@ class CallPanelController {
         p.setFrameOrigin(NSPoint(x: targetX, y: targetY))
     }
     
-    func showCall(name: String, number: String) {
+    func showCall(name: String, number: String, state: String = "ringing", direction: String = "incoming") {
         DispatchQueue.main.async {
             self.createPanelIfNeeded()
             
             let cleanName = name.trimmingCharacters(in: .whitespaces)
             let cleanNumber = number.trimmingCharacters(in: .whitespaces)
             self.currentNumber = cleanNumber
+            let isOutgoing = (direction == "outgoing")
             
             // Name line: contact name, or "Unknown" if none
             let hasRealName = !cleanName.isEmpty && cleanName != cleanNumber && cleanName != "Unknown"
@@ -167,10 +170,15 @@ class CallPanelController {
                 self.initialLabel.stringValue = "?"
             }
             
-            // Subtitle line: always the phone number
-            self.subtitleLabel.stringValue = cleanNumber
-            
-            self.acceptButton.isHidden = false
+            if isOutgoing {
+                // Outgoing: show "Calling..." below name, hide Accept
+                self.subtitleLabel.stringValue = "Calling \(cleanNumber)..."
+                self.acceptButton.isHidden = true
+            } else {
+                // Incoming: show phone number below name, show both buttons
+                self.subtitleLabel.stringValue = cleanNumber
+                self.acceptButton.isHidden = false
+            }
             
             guard let p = self.panel else { return }
             

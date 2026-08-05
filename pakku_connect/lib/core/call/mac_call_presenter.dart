@@ -16,6 +16,7 @@ class MacCallPresenter implements CallPresenter {
       'name': call.contactName,
       'number': call.phoneNumber,
       'state': call.state.name,
+      'direction': call.direction.name,
     }).then((_) {
       debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: EXIT MacCallPresenter.showCall (MethodChannel success)");
     }).catchError((e) {

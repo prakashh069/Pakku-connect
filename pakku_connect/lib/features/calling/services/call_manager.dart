@@ -137,21 +137,25 @@ class CallManager extends ChangeNotifier {
       }
       _currentCall?.state = CallState.answeredRemotely;
       
-      if (_currentCall?.direction == CallDirection.incoming) {
-        _stopwatch.start();
-        _durationTimer?.cancel();
+      _stopwatch.start();
+      _durationTimer?.cancel();
 
-        debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Calling CallPresenter.updateCall (0s)");
+      debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Calling CallPresenter.updateCall (0s)");
+      callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
+
+      _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        callDuration = _stopwatch.elapsed;
+        notifyListeners();
+        
         callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
-
-        _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-          callDuration = _stopwatch.elapsed;
-          notifyListeners();
-          
-          callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
-        });
-      }
+      });
       
+      notifyListeners();
+    } else if (state == 'dialing') {
+      // Outgoing call started dialing — keep "Calling..." state, no timer
+      // Timer will start when Android detects the receiver picks up (audio mode change)
+      // and sends 'answered'
+      debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Outgoing call dialing (waiting for receiver to pick up)");
       notifyListeners();
     } else if (state == 'ended') {
       if (_currentCall?.state == CallState.ended) return; // ignore duplicate
@@ -231,6 +235,9 @@ class CallManager extends ChangeNotifier {
       state: CallState.ringing,
     );
     notifyListeners();
+
+    // Show native popup for outgoing call
+    callPresenter?.showCall(_currentCall!);
 
     if (Platform.isAndroid || Platform.isIOS) {
       try {

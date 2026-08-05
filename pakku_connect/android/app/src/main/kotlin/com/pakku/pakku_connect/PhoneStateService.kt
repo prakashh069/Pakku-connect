@@ -3,6 +3,7 @@ package com.pakku.pakku_connect
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
@@ -39,6 +40,7 @@ class PhoneStateService : Service() {
     private var telephonyManager: TelephonyManager? = null
 
     private var callStateReceiver: android.content.BroadcastReceiver? = null
+    private var notificationReceiver: android.content.BroadcastReceiver? = null
 
     private var lastState = TelephonyManager.CALL_STATE_IDLE
     private var missedCallNotificationId = 100
@@ -496,6 +498,26 @@ class PhoneStateService : Service() {
             callStateReceiver = receiver
             val filter = android.content.IntentFilter(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
             registerReceiver(receiver, filter)
+
+            val notifReceiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.action == CallNotificationListenerService.ACTION_CALL_ANSWERED) {
+                        Log.d(TAG, "INSTRUMENTATION: Received CALL_ANSWERED from NotificationListener")
+                        if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
+                            webSocket?.send("""{"type":"call_state","state":"answered"}""")
+                            Log.d(TAG, "Sent call_state=answered (outgoing picked up via notification)")
+                        }
+                    }
+                }
+            }
+            notificationReceiver = notifReceiver
+            val notifFilter = android.content.IntentFilter(CallNotificationListenerService.ACTION_CALL_ANSWERED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(notifReceiver, notifFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(notifReceiver, notifFilter)
+            }
+
             Log.d(TAG, "INSTRUMENTATION: BroadcastReceiver registered successfully")
             isListenersStarted = true
             Log.d(TAG, "INSTRUMENTATION: isListenersStarted set to true")
@@ -534,11 +556,14 @@ class PhoneStateService : Service() {
                 val isOutgoingConnected = lastState == TelephonyManager.CALL_STATE_IDLE
                 Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_OFFHOOK block. isIncomingAnswered=$isIncomingAnswered, isOutgoingConnected=$isOutgoingConnected")
 
-                if (isIncomingAnswered || isOutgoingConnected) {
+                if (isIncomingAnswered) {
                     webSocket?.send("""{"type":"call_state","state":"answered"}""")
-                    Log.d(TAG, "Sent call_state=answered")
+                    Log.d(TAG, "Sent call_state=answered (incoming picked up)")
+                } else if (isOutgoingConnected) {
+                    webSocket?.send("""{"type":"call_state","state":"dialing"}""")
+                    Log.d(TAG, "Sent call_state=dialing (outgoing started)")
                 } else {
-                    Log.d(TAG, "INSTRUMENTATION: condition (isIncomingAnswered || isOutgoingConnected) was FALSE. Skipping call_state=answered emission.")
+                    Log.d(TAG, "INSTRUMENTATION: condition (isIncomingAnswered || isOutgoingConnected) was FALSE. Skipping emission.")
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
@@ -563,6 +588,7 @@ class PhoneStateService : Service() {
         lastState = state
         Log.d(TAG, "INSTRUMENTATION: handleStateChange finished. lastState updated to $lastState")
     }
+
 
     private fun showMissedCallNotification(phoneNumber: String) {
         val manager = getSystemService(NotificationManager::class.java)
@@ -596,6 +622,8 @@ class PhoneStateService : Service() {
 
         callStateReceiver?.let { unregisterReceiver(it) }
         callStateReceiver = null
+        notificationReceiver?.let { unregisterReceiver(it) }
+        notificationReceiver = null
         isListenersStarted = false
         running.set(false)
 
