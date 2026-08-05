@@ -16,8 +16,23 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.pakku.connect/platform"
     private var pendingPermissionResult: MethodChannel.Result? = null
 
+    private val unpairedReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            flutterEngine?.let { engine ->
+                MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL).invokeMethod("onUnpaired", null)
+            }
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(unpairedReceiver, android.content.IntentFilter("com.pakku.pakku_connect.UNPAIRED"), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(unpairedReceiver, android.content.IntentFilter("com.pakku.pakku_connect.UNPAIRED"))
+        }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -117,9 +132,21 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(true)
                     }
+                    "unpair" -> {
+                        val intent = Intent(this, PhoneStateService::class.java).apply {
+                            action = "com.pakku.pakku_connect.UNPAIR"
+                        }
+                        startService(intent)
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(unpairedReceiver)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

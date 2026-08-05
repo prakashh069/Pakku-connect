@@ -30,6 +30,17 @@ class WebSocketService {
   void Function(List<RemoteContact> contacts)? onContactsReceived;
   List<RemoteContact> cachedContacts = [];
   void Function(String action, bool success, String? error)? onActionResult;
+  void Function()? onUnpair;
+
+  WebSocketService({
+    this.onIncomingCall,
+    this.onCallState,
+    this.onDeviceStateChanged,
+    this.onConnectionChange,
+    this.onContactsReceived,
+    this.onActionResult,
+    this.onUnpair,
+  });
 
   void connect(String url) {
     _url = url;
@@ -147,6 +158,8 @@ class WebSocketService {
         if (action != null) {
           onActionResult?.call(action, success, error);
         }
+      } else if (type == MessageTypes.unpair) {
+        onUnpair?.call();
       }
     } catch (e, st) {
       debugPrint('WebSocketService: Failed to parse message: $e\n$st');

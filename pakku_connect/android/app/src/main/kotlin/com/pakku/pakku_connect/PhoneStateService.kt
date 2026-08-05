@@ -78,6 +78,24 @@ class PhoneStateService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "com.pakku.pakku_connect.UNPAIR") {
+            try {
+                val json = JSONObject().apply { put("type", "unpair") }
+                webSocket?.send(json.toString())
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send unpair message", e)
+            }
+            val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("paired", false).apply()
+            
+            val broadcastIntent = Intent("com.pakku.pakku_connect.UNPAIRED")
+            broadcastIntent.setPackage(packageName)
+            sendBroadcast(broadcastIntent)
+            
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Pakku Connect")
             .setContentText("Listening for calls")
@@ -256,6 +274,17 @@ class PhoneStateService : Service() {
                     val msgType = json.optString("type")
                     Log.d(TAG, "Dispatching:\n$msgType")
                     when (msgType) {
+                        "unpair" -> {
+                            Log.d(TAG, "Received unpair from Mac")
+                            val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
+                            prefs.edit().putBoolean("paired", false).apply()
+                            
+                            val broadcastIntent = Intent("com.pakku.pakku_connect.UNPAIRED")
+                            broadcastIntent.setPackage(packageName)
+                            sendBroadcast(broadcastIntent)
+                            
+                            stopSelf()
+                        }
                         "contacts_request" -> {
                             syncContacts()
                         }

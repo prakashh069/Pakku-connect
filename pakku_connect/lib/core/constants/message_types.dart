@@ -10,4 +10,5 @@ class MessageTypes {
   static const String endCall = 'end_call';
   static const String actionResult = 'action_result';
   static const String error = 'error';
+  static const String unpair = 'unpair';
 }

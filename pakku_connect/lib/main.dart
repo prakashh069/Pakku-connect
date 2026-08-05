@@ -13,6 +13,9 @@ import 'features/auth/screens/scan_screen.dart';
 import 'features/contacts/screens/contacts_tab.dart';
 import 'core/services/window_visibility_service.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+WebSocketService? _wsService;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
@@ -26,7 +29,12 @@ class PakkuApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider(create: (_) => WebSocketService()),
+        Provider<WebSocketService>(
+          create: (_) {
+            _wsService = WebSocketService();
+            return _wsService!;
+          },
+        ),
         Provider(
           create: (_) => WindowVisibilityService()..init(),
           dispose: (_, wvs) => wvs.dispose(),
@@ -38,6 +46,7 @@ class PakkuApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'Pakku Connect',
+        navigatorKey: navigatorKey,
         theme: buildAppTheme(),
         builder: (context, child) {
           return Stack(
@@ -73,6 +82,17 @@ class _RootRouterState extends State<RootRouter> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _setup());
+
+    if (Platform.isAndroid) {
+      const platform = MethodChannel('com.pakku.connect/platform');
+      platform.setMethodCallHandler((call) async {
+        if (call.method == 'onUnpaired') {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('paired', false);
+          navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+        }
+      });
+    }
   }
 
   Future<void> _setup() async {
@@ -110,6 +130,12 @@ class _RootRouterState extends State<RootRouter> {
           await _handleInitialPairingCompletion(prefs);
         }
         _handleSessionUpdate(newState);
+      };
+
+      ws.onUnpair = () async {
+        await prefs.setBool('paired', false);
+        ws.disconnect();
+        navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
       };
 
       const menuBarChannel = MethodChannel('com.pakku.connect/menuBar');
@@ -199,22 +225,31 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pakku Connect'),
-        actions: Platform.isMacOS
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.logout),
-                  tooltip: 'Disconnect',
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('paired', false);
-                    if (context.mounted) {
-                      context.read<WebSocketService>().disconnect();
-                      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-                    }
-                  },
-                ),
-              ]
-            : null,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Disconnect',
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('paired', false);
+              
+              if (Platform.isMacOS) {
+                if (context.mounted) {
+                  final ws = context.read<WebSocketService>();
+                  ws.send({'type': 'unpair'});
+                  ws.disconnect();
+                }
+              } else {
+                const platform = MethodChannel('com.pakku.connect/platform');
+                await platform.invokeMethod('unpair');
+              }
+              
+              if (context.mounted) {
+                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+              }
+            },
+          ),
+        ],
       ),
       body: Platform.isMacOS
           ? Column(
