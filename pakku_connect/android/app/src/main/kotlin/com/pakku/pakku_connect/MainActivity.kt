@@ -24,9 +24,13 @@ class MainActivity : FlutterActivity() {
                     "requestCallScreeningRole" -> {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             val roleManager = getSystemService(Context.ROLE_SERVICE) as android.app.role.RoleManager
-                            val intent = roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_CALL_SCREENING)
-                            startActivityForResult(intent, 1)
-                            result.success(true)
+                            if (roleManager.isRoleHeld(android.app.role.RoleManager.ROLE_CALL_SCREENING)) {
+                                result.success(true)
+                            } else {
+                                val intent = roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_CALL_SCREENING)
+                                startActivityForResult(intent, 1)
+                                result.success(true)
+                            }
                         } else {
                             result.success(false)
                         }
@@ -62,11 +66,13 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "hasNotificationAccess" -> {
-                        val isGranted = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(this@MainActivity).contains(packageName)
+                        val listeners = android.provider.Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                        val isGranted = listeners != null && listeners.contains(packageName)
                         result.success(isGranted)
                     }
                     "requestNotificationAccess" -> {
-                        val isGranted = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(this@MainActivity).contains(packageName)
+                        val listeners = android.provider.Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                        val isGranted = listeners != null && listeners.contains(packageName)
                         if (!isGranted) {
                             val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                             startActivity(intent)
