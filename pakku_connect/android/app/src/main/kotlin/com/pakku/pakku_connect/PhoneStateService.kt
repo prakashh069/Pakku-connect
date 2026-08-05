@@ -215,9 +215,12 @@ class PhoneStateService : Service() {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                Log.d(TAG, "ANDROID RECEIVED:\n$text")
                 try {
                     val json = JSONObject(text)
-                    when (json.optString("type")) {
+                    val msgType = json.optString("type")
+                    Log.d(TAG, "Dispatching:\n$msgType")
+                    when (msgType) {
                         "contacts_request" -> {
                             syncContacts()
                         }
@@ -235,18 +238,35 @@ class PhoneStateService : Service() {
                             }
                         }
                         "reject_call" -> {
+                            Log.d(TAG, "INSTRUMENTATION: Entered handler for reject_call.")
                             try {
                                 val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                                val hasCallPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                val hasAnswerPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.ANSWER_PHONE_CALLS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                Log.d(TAG, "INSTRUMENTATION: Current TelephonyManager.callState=$lastState")
+                                Log.d(TAG, "INSTRUMENTATION: SDK version=${Build.VERSION.SDK_INT}")
+                                Log.d(TAG, "INSTRUMENTATION: CALL_PHONE permission=$hasCallPhone")
+                                Log.d(TAG, "INSTRUMENTATION: ANSWER_PHONE_CALLS permission=$hasAnswerPhone")
+                                Log.d(TAG, "INSTRUMENTATION: Is TelecomManager null? ${tm == null}")
+                                
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                    tm.endCall()
+                                    Log.d(TAG, "INSTRUMENTATION: Calling TelecomManager.endCall().")
+                                    val result = tm.endCall()
+                                    Log.d(TAG, "INSTRUMENTATION: Boolean return value=$result")
                                 } else {
                                     @Suppress("DEPRECATION")
                                     tm.silenceRinger()
+                                    Log.d(TAG, "INSTRUMENTATION: legacy silenceRinger called")
                                 }
                                 Log.d(TAG, "Native reject executed")
                             } catch (e: SecurityException) {
-                                Log.e(TAG, "Permission denied for reject_call", e)
+                                Log.e(TAG, "INSTRUMENTATION: Any SecurityException in reject_call:", e)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "INSTRUMENTATION: Any other exception in reject_call:", e)
                             }
+                        }
+                        "end_call" -> {
+                            handleEndCall(webSocket)
                         }
                         "dial" -> {
                             val number = json.optString("number")
@@ -267,6 +287,38 @@ class PhoneStateService : Service() {
                 }
             }
         })
+    }
+
+    private fun handleEndCall(ws: WebSocket?) {
+        Log.d(TAG, "INSTRUMENTATION: Entered handler for end_call.")
+        try {
+            val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+            val hasCallPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasAnswerPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.ANSWER_PHONE_CALLS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            Log.d(TAG, "INSTRUMENTATION: Current TelephonyManager.callState=$lastState")
+            Log.d(TAG, "INSTRUMENTATION: SDK version=${Build.VERSION.SDK_INT}")
+            Log.d(TAG, "INSTRUMENTATION: CALL_PHONE permission=$hasCallPhone")
+            Log.d(TAG, "INSTRUMENTATION: ANSWER_PHONE_CALLS permission=$hasAnswerPhone")
+            Log.d(TAG, "INSTRUMENTATION: Is TelecomManager null? ${tm == null}")
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                Log.d(TAG, "INSTRUMENTATION: Calling TelecomManager.endCall().")
+                val result = tm.endCall()
+                Log.d(TAG, "INSTRUMENTATION: Boolean return value=$result")
+            } else {
+                @Suppress("DEPRECATION")
+                tm.silenceRinger()
+                Log.d(TAG, "INSTRUMENTATION: legacy silenceRinger called")
+            }
+            Log.d(TAG, "Native endCall executed")
+            ws?.send("""{"type":"action_result","action":"end_call","success":true}""")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "INSTRUMENTATION: Any SecurityException in end_call:", e)
+            ws?.send("""{"type":"action_result","action":"end_call","success":false,"error":"Permission denied"}""")
+        } catch (e: Exception) {
+            Log.e(TAG, "INSTRUMENTATION: Any other exception in end_call:", e)
+            ws?.send("""{"type":"action_result","action":"end_call","success":false,"error":"${e.message}"}""")
+        }
     }
 
     private fun syncContacts() {
@@ -396,7 +448,20 @@ class PhoneStateService : Service() {
 
     /** Shared by both the legacy and modern telephony callback paths. */
     private fun handleStateChange(state: Int, phoneNumber: String?) {
-        Log.d(TAG, "INSTRUMENTATION: handleStateChange invoked. Current lastState=$lastState, incoming state=$state")
+        val lastStateStr = when(lastState) {
+            TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+            TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+            TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+            else -> "UNKNOWN"
+        }
+        val stateStr = when(state) {
+            TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+            TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+            TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+            else -> "UNKNOWN"
+        }
+        Log.d(TAG, "INSTRUMENTATION: Telephony transition: $lastStateStr -> $stateStr")
+        
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_RINGING block")
@@ -422,8 +487,8 @@ class PhoneStateService : Service() {
                 if (lastState == TelephonyManager.CALL_STATE_RINGING ||
                     lastState == TelephonyManager.CALL_STATE_OFFHOOK
                 ) {
+                    Log.d(TAG, "INSTRUMENTATION: Sending call_state=ended")
                     webSocket?.send("""{"type":"call_state","state":"ended"}""")
-                    Log.d(TAG, "Sent call_state=ended")
                 } else {
                     Log.d(TAG, "INSTRUMENTATION: CALL_STATE_IDLE block condition not met (lastState was not RINGING or OFFHOOK). Skipping ended emission.")
                 }

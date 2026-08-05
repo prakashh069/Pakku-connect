@@ -65,13 +65,24 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    console.log('DEBUG: Node Relay: Received JSON: ' + raw.toString());
-    log('message_forwarded', { messageType: data.type });
-    console.log('DEBUG: Node Relay: Forwarding JSON: ' + raw.toString());
+    if (!ws.clientName) {
+      if (['dial', 'reject_call', 'end_call', 'answer_call', 'contacts_request'].includes(data.type)) {
+        ws.clientName = 'macOS';
+      } else if (['device_state', 'call_state', 'contacts', 'action_result', 'incoming_call'].includes(data.type)) {
+        ws.clientName = 'Android';
+      } else {
+        ws.clientName = 'Unknown';
+      }
+    }
+    const sender = ws.clientName;
+
+    console.log(`\n[${new Date().toISOString()}] SERVER RECEIVED from ${sender}:\n${raw.toString()}\n`);
 
     // Forward verbatim (raw) to all other connected clients
     wss.clients.forEach((client) => {
       if (client !== ws && client.readyState === WebSocket.OPEN) {
+        const receiver = client.clientName || (sender === 'macOS' ? 'Android' : 'macOS');
+        console.log(`[${new Date().toISOString()}] SERVER FORWARDED to ${receiver}:\n${raw.toString()}\n`);
         client.send(raw);
       }
     });

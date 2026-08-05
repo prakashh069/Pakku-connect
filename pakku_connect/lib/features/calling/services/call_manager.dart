@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/models/call.dart';
@@ -13,7 +14,14 @@ class CallManager extends ChangeNotifier {
 
   String? lastNativeError;
 
-  CallManager(this.wsService);
+  final Stopwatch _stopwatch = Stopwatch();
+  Timer? _durationTimer;
+  Duration callDuration = Duration.zero;
+  bool isEnding = false;
+
+  CallManager(this.wsService) {
+    wsService.onActionResult = handleActionResult;
+  }
 
   Call? get currentCall => _currentCall;
 
@@ -30,56 +38,86 @@ class CallManager extends ChangeNotifier {
 
   void handleCallState(String state) {
     if (state == 'answered') {
+      if (_currentCall?.state == CallState.answeredRemotely) return; // ignore duplicate
       _currentCall?.state = CallState.answeredRemotely;
+      
+      if (_currentCall?.direction == CallDirection.incoming) {
+        _stopwatch.start();
+        _durationTimer?.cancel();
+        _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          callDuration = _stopwatch.elapsed;
+          notifyListeners();
+        });
+      }
+      
       notifyListeners();
-      Future.delayed(const Duration(seconds: 1), _clear);
-    } else {
-      _clear();
+    } else if (state == 'ended') {
+      if (_currentCall?.state == CallState.ended) return; // ignore duplicate
+      _durationTimer?.cancel();
+      _stopwatch.stop();
+      _currentCall?.state = CallState.ended;
+      isEnding = false;
+      notifyListeners();
+      Future.delayed(const Duration(seconds: 2), _clear);
+    }
+  }
+
+  void handleActionResult(String action, bool success, String? error) {
+    if (action == 'end_call' && !success) {
+      isEnding = false;
+      lastNativeError = error ?? 'Failed to end call';
+      notifyListeners();
     }
   }
 
   Future<void> answerCall() async {
     if (_currentCall == null) return;
-    _currentCall!.state = CallState.answeredRemotely; // optimistic UI only
+    // Don't optimistically set answeredRemotely. Let the source of truth handle it.
     lastNativeError = null;
     notifyListeners();
     wsService.send({'type': MessageTypes.answerCall});
-    // Authoritative dismissal still comes from handleCallState() above.
-    // This timeout is a fallback in case the phone never confirms (e.g.
-    // OEM-restricted device — see docs/02_TDD.md known limitations).
-    Future.delayed(const Duration(seconds: 4), () {
-      if (_currentCall?.state == CallState.answeredRemotely) _clear();
-    });
   }
 
   Future<void> rejectCall() async {
     debugPrint("INSTRUMENTATION: rejectCall invoked.");
     if (_currentCall == null) return;
-    _currentCall!.state = CallState.declinedRemotely;
     lastNativeError = null;
     notifyListeners();
     debugPrint("INSTRUMENTATION: rejectCall sending reject_call over wsService");
     wsService.send({'type': MessageTypes.rejectCall});
-    _clear();
   }
 
   Future<void> cancelOutgoingCall() async {
-    debugPrint("INSTRUMENTATION: cancelOutgoingCall invoked.");
+    final timestamp = DateTime.now().toIso8601String();
+    debugPrint("[$timestamp] INSTRUMENTATION: cancelOutgoingCall invoked.");
     if (_currentCall == null || _currentCall!.direction != CallDirection.outgoing) {
-        debugPrint("INSTRUMENTATION: cancelOutgoingCall aborted. _currentCall=$_currentCall");
+        debugPrint("[$timestamp] INSTRUMENTATION: cancelOutgoingCall aborted. _currentCall=$_currentCall");
         return;
     }
     lastNativeError = null;
     notifyListeners();
-    debugPrint("INSTRUMENTATION: cancelOutgoingCall sending reject_call over wsService");
-    wsService.send({'type': MessageTypes.rejectCall});
-    _clear();
+    final payload = {'type': MessageTypes.rejectCall};
+    debugPrint("[$timestamp] INSTRUMENTATION: cancelOutgoingCall sending JSON payload over wsService: $payload");
+    wsService.send(payload);
+  }
+
+  Future<void> endCall() async {
+    final timestamp = DateTime.now().toIso8601String();
+    debugPrint("[$timestamp] INSTRUMENTATION: endCall invoked.");
+    if (_currentCall == null) return;
+    isEnding = true;
+    lastNativeError = null;
+    notifyListeners();
+    final payload = {'type': MessageTypes.endCall};
+    debugPrint("[$timestamp] INSTRUMENTATION: endCall sending JSON payload over wsService: $payload");
+    wsService.send(payload);
   }
 
   Future<void> dial(String number) async {
-    debugPrint("INSTRUMENTATION: dial invoked for number: $number");
+    final cleanNumber = number.replaceAll(RegExp(r'[^\d+]'), '');
+    debugPrint("INSTRUMENTATION: dial invoked for number: $number (cleaned: $cleanNumber)");
     _currentCall = Call(
-      phoneNumber: number,
+      phoneNumber: cleanNumber,
       direction: CallDirection.outgoing,
       state: CallState.ringing,
     );
@@ -87,18 +125,22 @@ class CallManager extends ChangeNotifier {
 
     if (Platform.isAndroid || Platform.isIOS) {
       try {
-        await _platform.invokeMethod('makeCall', {'phoneNumber': number});
+        await _platform.invokeMethod('makeCall', {'phoneNumber': cleanNumber});
       } catch (e) {
         lastNativeError = 'Unable to place call';
         notifyListeners();
       }
     } else {
-      // Mac: no local ack path yet — see docs/03_API_PROTOCOL.md §5 open items.
-      wsService.send({'type': MessageTypes.dial, 'number': number});
+      debugPrint('INSTRUMENTATION: dial sending dial over wsService'); wsService.send({'type': MessageTypes.dial, 'number': cleanNumber});
     }
   }
 
   void _clear() {
+    _durationTimer?.cancel();
+    _stopwatch.stop();
+    _stopwatch.reset();
+    callDuration = Duration.zero;
+    isEnding = false;
     _currentCall = null;
     notifyListeners();
   }

@@ -7,5 +7,7 @@ class MessageTypes {
   static const String deviceState = 'device_state'; // connected | disconnected
   static const String contactsRequest = 'contacts_request';
   static const String contacts = 'contacts';
+  static const String endCall = 'end_call';
+  static const String actionResult = 'action_result';
   static const String error = 'error';
 }

@@ -34,7 +34,7 @@ void main() {
   test('tampered token fails', () {
     final token = CryptoService.generateJWT(
       deviceId: 'd1', deviceName: 'test', platform: 'android');
-    final tampered = token.substring(0, token.length - 1) + 'a';
+    final tampered = '${token.substring(0, token.length - 1)}a';
     expect(CryptoService.verifyJWT(tampered), isNull);
   });
 
