@@ -45,9 +45,8 @@ class CallManager extends ChangeNotifier {
   }
 
   void _onWindowVisibilityChanged() {
-    if (windowVisibilityService.isVisible) {
-      callPresenter?.dismissCall();
-    }
+    // We no longer dismiss the native panel when the app window is visible, 
+    // because the native panel is now the only call interface.
   }
 
   @override
@@ -165,9 +164,13 @@ class CallManager extends ChangeNotifier {
       isEnding = false;
       notifyListeners();
 
-      callPresenter?.dismissCall();
+      callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
+      
+      Future.delayed(const Duration(seconds: 3), () {
+        callPresenter?.dismissCall();
+      });
 
-      Future.delayed(const Duration(seconds: 2), _clear);
+      Future.delayed(const Duration(seconds: 4), _clear);
     }
   }
 

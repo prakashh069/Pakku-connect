@@ -179,6 +179,8 @@ class CallPanelController {
                 self.subtitleLabel.stringValue = cleanNumber
                 self.acceptButton.isHidden = false
             }
+            self.subtitleLabel.textColor = NSColor.white.withAlphaComponent(0.8)
+            self.declineButton.isHidden = false
             
             guard let p = self.panel else { return }
             
@@ -204,9 +206,25 @@ class CallPanelController {
         DispatchQueue.main.async {
             guard let p = self.panel, p.isVisible else { return }
             
-            if state == "answeredRemotely" || state == "answered" {
+            if state == "ended" || state == "declinedRemotely" {
+                self.acceptButton.isHidden = true
+                self.declineButton.isHidden = true
+                
+                let statusText = state == "ended" ? "Call Ended" : "Declined"
+                if elapsedSeconds > 0 {
+                    let mins = elapsedSeconds / 60
+                    let secs = elapsedSeconds % 60
+                    let timeString = String(format: "%02d:%02d", mins, secs)
+                    self.subtitleLabel.stringValue = "\(statusText) • \(timeString)"
+                } else {
+                    self.subtitleLabel.stringValue = statusText
+                }
+                
+                self.subtitleLabel.textColor = NSColor.systemRed
+            } else if state == "answeredRemotely" || state == "answered" {
                 // Hide accept, decline stays in its original fixed position
                 self.acceptButton.isHidden = true
+                self.subtitleLabel.textColor = NSColor.white.withAlphaComponent(0.8)
                 
                 let mins = elapsedSeconds / 60
                 let secs = elapsedSeconds % 60

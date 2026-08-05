@@ -23,6 +23,13 @@ class _ScanScreenState extends State<ScanScreen> {
   void initState() {
     super.initState();
     debugPrint('ScanScreen: initState called');
+    controller.start();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
   }
 
   Future<bool> _requestPermissions() async {

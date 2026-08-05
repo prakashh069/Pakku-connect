@@ -79,8 +79,11 @@ class _RootRouterState extends State<RootRouter> {
       platform.setMethodCallHandler((call) async {
         if (call.method == 'onUnpaired') {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('paired', false);
-          navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+          final wasPaired = prefs.getBool('paired') ?? false;
+          if (wasPaired) {
+            await prefs.setBool('paired', false);
+            navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+          }
         }
       });
     }
