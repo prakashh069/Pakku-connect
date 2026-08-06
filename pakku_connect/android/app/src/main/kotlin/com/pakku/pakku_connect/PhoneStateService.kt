@@ -44,6 +44,7 @@ class PhoneStateService : Service() {
 
     private var callStateReceiver: android.content.BroadcastReceiver? = null
     private var notificationReceiver: android.content.BroadcastReceiver? = null
+    private var clipboardReceiver: android.content.BroadcastReceiver? = null
 
     private var lastState = TelephonyManager.CALL_STATE_IDLE
     private var missedCallNotificationId = 100
@@ -113,11 +114,22 @@ class PhoneStateService : Service() {
             return START_STICKY
         }
 
+        val sendIntent = Intent(this, ClipboardReaderActivity::class.java).apply {
+            action = ClipboardReaderActivity.ACTION_READ_CLIPBOARD
+        }
+        val pendingSendIntent = android.app.PendingIntent.getActivity(
+            this,
+            0,
+            sendIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Pakku Connect")
-            .setContentText("Listening for calls")
+            .setContentText("Connected to Mac")
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_menu_send, "Send to Mac", pendingSendIntent)
             .build()
         startForeground(1, notification)
 
@@ -637,6 +649,33 @@ class PhoneStateService : Service() {
                 registerReceiver(notifReceiver, notifFilter)
             }
 
+            val clipReceiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    if (intent?.action == "com.pakku.pakku_connect.ACTION_SEND_TO_MAC") {
+                        val text = intent.getStringExtra("text")
+                        if (!text.isNullOrEmpty()) {
+                            val payload = JSONObject().apply {
+                                put("type", "share.clipboard")
+                                put("payload", JSONObject().apply {
+                                    put("text", text)
+                                    put("id", java.util.UUID.randomUUID().toString())
+                                    put("deviceName", android.os.Build.MODEL)
+                                })
+                            }
+                            Log.d(TAG, "SEND outbound clipboard from receiver")
+                            sendAuthenticated(payload.toString())
+                        }
+                    }
+                }
+            }
+            clipboardReceiver = clipReceiver
+            val clipFilter = android.content.IntentFilter("com.pakku.pakku_connect.ACTION_SEND_TO_MAC")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(clipReceiver, clipFilter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(clipReceiver, clipFilter)
+            }
+
             isListenersStarted = true
             Log.i(TAG, "Telephony listeners registered")
         } catch (e: SecurityException) {
@@ -725,6 +764,8 @@ class PhoneStateService : Service() {
         callStateReceiver = null
         notificationReceiver?.let { unregisterReceiver(it) }
         notificationReceiver = null
+        clipboardReceiver?.let { unregisterReceiver(it) }
+        clipboardReceiver = null
         isListenersStarted = false
         running.set(false)
 
