@@ -23,7 +23,6 @@ class _ScanScreenState extends State<ScanScreen> {
   void initState() {
     super.initState();
     debugPrint('ScanScreen: initState called');
-    controller.start();
   }
 
   @override
@@ -134,7 +133,7 @@ class _ScanScreenState extends State<ScanScreen> {
           MobileScanner(
             controller: controller,
             onDetect: _onDetect,
-            errorBuilder: (context, error, child) {
+            errorBuilder: (context, error) {
               debugPrint('ScanScreen: MobileScanner errorBuilder triggered: ${error.errorCode} - ${error.errorDetails?.message}');
               return Center(
                 child: Column(

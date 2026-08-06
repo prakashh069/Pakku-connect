@@ -11,7 +11,10 @@ import 'features/auth/screens/qr_pairing_screen.dart';
 import 'features/auth/screens/scan_screen.dart';
 import 'features/contacts/screens/contacts_tab.dart';
 import 'features/contacts/services/favorites_service.dart';
+import 'features/clipboard/services/clipboard_sync_manager.dart';
+import 'features/clipboard/services/clipboard_share_coordinator.dart';
 import 'core/services/window_visibility_service.dart';
+import 'core/services/platform_transport.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 WebSocketService? _wsService;
@@ -44,6 +47,17 @@ class PakkuApp extends StatelessWidget {
           update: (_, ws, wvs, previous) => previous ?? CallManager(ws, wvs),
         ),
         ChangeNotifierProvider(create: (_) => FavoritesService()),
+        Provider<PlatformTransport>(
+          create: (ctx) => Platform.isMacOS 
+              ? ctx.read<WebSocketService>() 
+              : MethodChannelTransport(),
+          dispose: (_, pt) => pt.dispose(),
+        ),
+        ChangeNotifierProxyProvider<PlatformTransport, ClipboardSyncManager>(
+          lazy: false,
+          create: (ctx) => ClipboardSyncManager(ctx.read<PlatformTransport>()),
+          update: (_, pt, previous) => previous ?? ClipboardSyncManager(pt),
+        ),
       ],
       child: MaterialApp(
         title: 'Pakku Connect',
@@ -71,6 +85,7 @@ class _RootRouterState extends State<RootRouter> {
   bool _isLoading = true;
   bool _isPaired = false;
   DeviceSessionState _sessionState = DeviceSessionState.disconnected;
+  ClipboardShareCoordinator? _clipboardCoordinator;
 
   @override
   void initState() {
@@ -78,24 +93,37 @@ class _RootRouterState extends State<RootRouter> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _setup());
 
     if (Platform.isAndroid) {
-      const platform = MethodChannel('com.pakku.connect/platform');
-      platform.setMethodCallHandler((call) async {
-        if (call.method == 'onUnpaired') {
+      // Fix: route onUnpaired through MethodChannelTransport which already owns
+      // the channel, instead of registering a competing setMethodCallHandler here.
+      final transport = context.read<PlatformTransport>();
+      if (transport is MethodChannelTransport) {
+        transport.onUnpaired = () async {
           final prefs = await SharedPreferences.getInstance();
           final wasPaired = prefs.getBool('paired') ?? false;
           if (wasPaired) {
             await prefs.setBool('paired', false);
             navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
           }
-        }
-      });
+        };
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _clipboardCoordinator?.dispose();
+    super.dispose();
   }
 
   Future<void> _setup() async {
     final prefs = await SharedPreferences.getInstance();
     
     if (!mounted) return;
+
+    // Wire ClipboardShareCoordinator to receive validated inbound clipboard events (both macOS and Android).
+    final clipManager = context.read<ClipboardSyncManager>();
+    _clipboardCoordinator = ClipboardShareCoordinator();
+    _clipboardCoordinator!.attach(clipManager.inboundShares);
 
     if (Platform.isMacOS) {
       _isPaired = prefs.getBool('paired') ?? false;
@@ -357,6 +385,65 @@ class HomeScreen extends StatelessWidget {
         title: const Text('Pakku Connect'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) {
+                  return AlertDialog(
+                    title: const Text('Settings'),
+                    content: Consumer<ClipboardSyncManager>(
+                      builder: (context, clipboardManager, child) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CheckboxListTile(
+                              title: const Text('Enable Universal Clipboard'),
+                              value: clipboardManager.enabled,
+                              onChanged: (val) {
+                                if (val != null) {
+                                  clipboardManager.setEnabled(val);
+                                }
+                              },
+                            ),
+                            if (Platform.isAndroid)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                                child: ElevatedButton.icon(
+                                  icon: const Icon(Icons.flash_on),
+                                  label: const Text('Enable Auto-Paste'),
+                                  onPressed: () {
+                                    const platform = MethodChannel('com.pakku.connect/platform');
+                                    platform.invokeMethod('requestOverlayPermission');
+                                  },
+                                ),
+                              ),
+                            if (Platform.isAndroid)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                                child: Text(
+                                  'Requires "Display over other apps" permission to instantly paste text copied from your Mac in the background.',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Disconnect',
             onPressed: () async {
@@ -366,7 +453,9 @@ class HomeScreen extends StatelessWidget {
               if (Platform.isMacOS) {
                 if (context.mounted) {
                   ws.send({'type': 'unpair'});
-                  ws.disconnect();
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    ws.disconnect();
+                  });
                 }
               } else {
                 const platform = MethodChannel('com.pakku.connect/platform');

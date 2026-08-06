@@ -76,11 +76,11 @@ class CryptoService {
       
       // Verify required standard claims
       if (payload['iss'] != 'pakku_connect') {
-        debugPrint('CryptoService: Invalid issuer: ${payload['iss']}');
+        debugPrint('CryptoService: Invalid issuer.');
         return null;
       }
       if (payload['aud'] != 'pakku_connect_client') {
-        debugPrint('CryptoService: Invalid audience: ${payload['aud']}');
+        debugPrint('CryptoService: Invalid audience.');
         return null;
       }
       
@@ -108,8 +108,8 @@ class CryptoService {
       }
 
       return payload;
-    } catch (e, st) {
-      debugPrint('CryptoService: JWT verification failed: $e\n$st');
+    } catch (e) {
+      debugPrint('CryptoService: JWT verification failed.');
       return null;
     }
   }

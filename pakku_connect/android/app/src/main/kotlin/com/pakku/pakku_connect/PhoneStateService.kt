@@ -101,6 +101,16 @@ class PhoneStateService : Service() {
                 stopSelf()
             }, 500)
             return START_NOT_STICKY
+        } else if (intent?.action == "com.pakku.pakku_connect.SEND_MESSAGE") {
+            val payload = intent.getStringExtra("payload")
+            if (payload != null) {
+                try {
+                    sendAuthenticated(payload)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to send platform message", e)
+                }
+            }
+            return START_STICKY
         }
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -379,7 +389,55 @@ class PhoneStateService : Service() {
                                 }
                             }
                         }
-                        else -> Log.w(TAG, "Unhandled message type: $msgType")
+                        "share.clipboard" -> {
+                            val payloadObj = json.optJSONObject("payload")
+                            val clipboardText = payloadObj?.optString("text")
+                            val deviceName = payloadObj?.optString("deviceName") ?: "Mac"
+                            
+                            if (!clipboardText.isNullOrEmpty()) {
+                                if (MainActivity.isAppInForeground) {
+                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                        try {
+                                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                            val clip = android.content.ClipData.newPlainText("Copied from $deviceName", clipboardText)
+                                            clipboard.setPrimaryClip(clip)
+                                            
+                                            val snippet = if (clipboardText.length > 30) clipboardText.substring(0, 27) + "..." else clipboardText
+                                            android.widget.Toast.makeText(this@PhoneStateService, "Copied from $deviceName\n$snippet", android.widget.Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            Log.e(TAG, "Foreground copy failed", e)
+                                        }
+                                    }, 200) // Delay 200ms to allow Flutter to process the broadcast first
+                                } else {
+                                    if (android.provider.Settings.canDrawOverlays(this@PhoneStateService)) {
+                                        val intent = Intent(this@PhoneStateService, ClipboardWriterActivity::class.java).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                                            putExtra("clipboard_text", clipboardText)
+                                            putExtra("device_name", deviceName)
+                                        }
+                                        startActivity(intent)
+                                    } else {
+                                        showClipboardNotification(clipboardText, deviceName)
+                                    }
+                                }
+                            }
+                            
+                            // Always forward to Flutter so ClipboardSyncManager can track _lastReceivedText for deduplication
+                            val broadcastIntent = Intent("com.pakku.pakku_connect.WS_MESSAGE")
+                            broadcastIntent.setPackage(packageName)
+                            broadcastIntent.putExtra("payload", text)
+                            sendBroadcast(broadcastIntent)
+                            
+                            // Persist it natively in case Flutter is dead and misses the broadcast
+                            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                            prefs.edit().putString("flutter.lastReceivedClipboardText", clipboardText).apply()
+                        }
+                        else -> {
+                            val broadcastIntent = Intent("com.pakku.pakku_connect.WS_MESSAGE")
+                            broadcastIntent.setPackage(packageName)
+                            broadcastIntent.putExtra("payload", text)
+                            sendBroadcast(broadcastIntent)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse/handle control message: ${e.message}")
@@ -480,6 +538,44 @@ class PhoneStateService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync contacts: ${e.message}")
         }
+    }
+
+    private fun showClipboardNotification(text: String, deviceName: String) {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val channelId = "pakku_clipboard_channel"
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                channelId,
+                "Clipboard Sync",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            )
+            manager.createNotificationChannel(channel)
+        }
+
+        val intent = Intent(this, ClipboardWriterActivity::class.java).apply {
+            putExtra("clipboard_text", text)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            this,
+            text.hashCode(),
+            intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.ic_menu_edit)
+            .setContentTitle("Clipboard from $deviceName")
+            .setContentText("Tap to copy to your phone")
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .addAction(android.R.drawable.ic_menu_save, "Copy", pendingIntent)
+            .setContentIntent(pendingIntent)
+            .build()
+            
+        manager.notify(80085, notification)
     }
 
     // ---------------------------------------------------------------
@@ -657,7 +753,7 @@ class PhoneStateService : Service() {
     private fun sendAuthenticated(msg: String) {
         synchronized(socketLock) {
             if (!authenticated || webSocket == null) {
-                Log.w(TAG, "Dropped message because connection is not authenticated: $msg")
+                Log.w(TAG, "Dropped outbound message (unauthenticated).")
                 return
             }
             webSocket?.send(msg)

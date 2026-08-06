@@ -51,6 +51,7 @@ class AppDelegate: FlutterAppDelegate {
       })
       
       CallPanelController.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
+      ClipboardPanelController.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
       
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didBecomeKeyNotification, object: mainFlutterWindow)
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didResignKeyNotification, object: mainFlutterWindow)

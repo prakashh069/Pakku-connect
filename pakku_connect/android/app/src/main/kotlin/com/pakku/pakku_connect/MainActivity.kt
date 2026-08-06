@@ -24,13 +24,24 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private val wsMessageReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val payload = intent?.getStringExtra("payload") ?: return
+            flutterEngine?.let { engine ->
+                MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL).invokeMethod("onMessage", payload)
+            }
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(unpairedReceiver, android.content.IntentFilter("com.pakku.pakku_connect.UNPAIRED"), Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(wsMessageReceiver, android.content.IntentFilter("com.pakku.pakku_connect.WS_MESSAGE"), Context.RECEIVER_NOT_EXPORTED)
         } else {
             registerReceiver(unpairedReceiver, android.content.IntentFilter("com.pakku.pakku_connect.UNPAIRED"))
+            registerReceiver(wsMessageReceiver, android.content.IntentFilter("com.pakku.pakku_connect.WS_MESSAGE"))
         }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -94,6 +105,25 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(true)
                     }
+                    "hasOverlayPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            result.success(android.provider.Settings.canDrawOverlays(this@MainActivity))
+                        } else {
+                            result.success(true)
+                        }
+                    }
+                    "requestOverlayPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            if (!android.provider.Settings.canDrawOverlays(this@MainActivity)) {
+                                val intent = Intent(
+                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:$packageName")
+                                )
+                                startActivity(intent)
+                            }
+                        }
+                        result.success(true)
+                    }
                     "requestAllPermissions" -> {
                         val permissionsToRequest = mutableListOf(
                             Manifest.permission.CALL_PHONE,
@@ -138,6 +168,20 @@ class MainActivity : FlutterActivity() {
                         startService(intent)
                         result.success(true)
                     }
+                    "sendPlatformMessage" -> {
+                        val payload = call.arguments<String>()
+                        if (payload != null) {
+                            val intent = Intent(this, PhoneStateService::class.java).apply {
+                                action = "com.pakku.pakku_connect.SEND_MESSAGE"
+                                putExtra("payload", payload)
+                            }
+                            startService(intent)
+                        }
+                        result.success(true)
+                    }
+                    "getDeviceName" -> {
+                        result.success(android.os.Build.MODEL)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -146,6 +190,17 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(unpairedReceiver)
+        unregisterReceiver(wsMessageReceiver)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isAppInForeground = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        isAppInForeground = false
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -158,6 +213,7 @@ class MainActivity : FlutterActivity() {
     }
 
     companion object {
+        var isAppInForeground = false
         private const val REQ_CALL_PHONE = 101
         private const val REQ_ALL_PERMISSIONS = 102
     }

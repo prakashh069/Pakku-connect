@@ -6,6 +6,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../constants/message_types.dart';
 import '../models/contact.dart';
+import 'platform_transport.dart';
 
 enum DeviceSessionState {
   connected,
@@ -15,7 +16,7 @@ enum DeviceSessionState {
   paused,
 }
 
-class WebSocketService {
+class WebSocketService implements PlatformTransport {
   WebSocketChannel? _channel;
   Timer? _reconnectTimer;
   int _attempt = 0;
@@ -23,6 +24,11 @@ class WebSocketService {
   bool _isIntentionalDisconnect = false;
   bool _paused = false;
   bool _authenticated = false;
+
+  final StreamController<Map<String, dynamic>> _messageController = StreamController.broadcast();
+
+  @override
+  Stream<Map<String, dynamic>> get messages => _messageController.stream;
 
   void Function(String phoneNumber, String? contactName)? onIncomingCall;
   void Function(String state)? onCallState; // "answered" | "ended"
@@ -32,6 +38,7 @@ class WebSocketService {
   List<RemoteContact> cachedContacts = [];
   void Function(String action, bool success, String? error)? onActionResult;
   void Function()? onUnpair;
+  void Function(Map<String, dynamic> data)? onPlatformMessage;
 
   WebSocketService({
     this.onIncomingCall,
@@ -175,19 +182,26 @@ class WebSocketService {
         }
       } else if (type == MessageTypes.unpair) {
         onUnpair?.call();
+      } else {
+        // Generic dispatch for feature-specific message types (e.g. share.clipboard).
+        // WebSocketService does not inspect these types — subscribers filter on their own.
+        onPlatformMessage?.call(data);
       }
-    } catch (e, st) {
-      debugPrint('WebSocketService: Failed to parse message: $e\n$st');
+
+      _messageController.add(data);
+    } catch (e) {
+      debugPrint('WebSocketService: Failed to parse incoming message.');
     }
   }
 
-  void send(Map<String, dynamic> message) {
+  @override
+  Future<void> send(Map<String, dynamic> data) async {
     if (!_authenticated) {
-      debugPrint('WebSocketService: Dropping message because socket is not authenticated: $message');
+      debugPrint('WebSocketService: Dropping outbound ${data['type']} message (unauthenticated).');
       return;
     }
-    debugPrint('WebSocketService: SEND outbound message (${message['type']})');
-    _channel?.sink.add(jsonEncode(message));
+    debugPrint('WebSocketService: SEND outbound message (${data['type']})');
+    _channel?.sink.add(jsonEncode(data));
   }
 
   void requestContacts() {
@@ -215,5 +229,11 @@ class WebSocketService {
     if (!_paused || _url == null) return;
     _paused = false;
     connect(_url!);
+  }
+
+  @override
+  void dispose() {
+    _messageController.close();
+    disconnect();
   }
 }

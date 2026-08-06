@@ -11,4 +11,5 @@ class MessageTypes {
   static const String actionResult = 'action_result';
   static const String error = 'error';
   static const String unpair = 'unpair';
+  static const String shareClipboard = 'share.clipboard';
 }
