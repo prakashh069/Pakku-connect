@@ -102,7 +102,6 @@ class MainActivity : FlutterActivity() {
                         )
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                             permissionsToRequest.add(Manifest.permission.ANSWER_PHONE_CALLS)
-                            permissionsToRequest.add(Manifest.permission.READ_CALL_LOG)
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)

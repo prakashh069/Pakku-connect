@@ -60,10 +60,8 @@ class CallManager extends ChangeNotifier {
   bool _isSamePhoneNumber(String a, String b) {
     final cleanA = a.replaceAll(RegExp(r'\D'), '');
     final cleanB = b.replaceAll(RegExp(r'\D'), '');
-    debugPrint("DEBUG-CALL: Comparing cleanA=$cleanA with cleanB=$cleanB");
     if (cleanA.isEmpty || cleanB.isEmpty) return false;
     if (cleanA == cleanB) return true;
-    
     // Country code fallback: compare the ends if they are reasonably long (>= 7 digits)
     if (cleanA.length >= 7 && cleanB.length >= 7) {
       if (cleanA.endsWith(cleanB) || cleanB.endsWith(cleanA)) {
@@ -74,39 +72,23 @@ class CallManager extends ChangeNotifier {
   }
 
   String? _resolveContactName(String phoneNumber, String? providedName) {
-    debugPrint("DEBUG-CALL: Resolving contact for incoming phone number: $phoneNumber");
     if (providedName != null && providedName.isNotEmpty) {
-      debugPrint("DEBUG-CALL: Provided name exists: $providedName");
       return providedName;
     }
-    final cleanTarget = phoneNumber.replaceAll(RegExp(r'\D'), '');
-    debugPrint("DEBUG-CALL: Normalized phone number: $cleanTarget");
-    debugPrint("DEBUG-CALL: Number of synchronized contacts: ${wsService.cachedContacts.length}");
-    
     for (final contact in wsService.cachedContacts) {
       for (final p in contact.phones) {
         if (_isSamePhoneNumber(p.number, phoneNumber)) {
-          debugPrint("DEBUG-CALL: Matching contact found: true");
-          debugPrint("DEBUG-CALL: Resolved contact name: ${contact.displayName}");
           return contact.displayName;
         }
       }
     }
-    debugPrint("DEBUG-CALL: Matching contact found: false");
-    debugPrint("DEBUG-CALL: Resolved contact name: Unknown");
     return providedName;
   }
 
   void handleIncoming(String phoneNumber, String? contactName) {
-    final timestamp = DateTime.now().toIso8601String();
-    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: ENTER CallManager.handleIncoming(phoneNumber: $phoneNumber)");
-    
-    if (_currentCall?.state == CallState.ringing) {
-      debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: EXIT CallManager.handleIncoming (already ringing)");
-      return;
-    }
+    if (_currentCall?.state == CallState.ringing) return;
     lastNativeError = null;
-    
+
     final resolvedName = _resolveContactName(phoneNumber, contactName);
 
     _currentCall = Call(
@@ -116,48 +98,29 @@ class CallManager extends ChangeNotifier {
     );
     notifyListeners();
 
-    final isVisible = windowVisibilityService.isVisible;
-    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: windowVisibilityService.isVisible = $isVisible");
-    
-    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Calling CallPresenter.showCall()");
     callPresenter?.showCall(_currentCall!);
-    
-    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: EXIT CallManager.handleIncoming");
   }
 
   void handleCallState(String state) {
-    final timestamp = DateTime.now().toIso8601String();
-    debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: ENTER CallManager.handleCallState(state: $state)");
-    
     if (state == 'answered') {
-      if (_currentCall?.state == CallState.answeredRemotely) {
-        debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: EXIT CallManager.handleCallState (already answeredRemotely)");
-        return;
-      }
+      if (_currentCall?.state == CallState.answeredRemotely) return;
       _currentCall?.state = CallState.answeredRemotely;
-      
+
       _stopwatch.start();
       _durationTimer?.cancel();
-
-      debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Calling CallPresenter.updateCall (0s)");
       callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
 
       _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         callDuration = _stopwatch.elapsed;
         notifyListeners();
-        
         callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
       });
-      
+
       notifyListeners();
     } else if (state == 'dialing') {
-      // Outgoing call started dialing — keep "Calling..." state, no timer
-      // Timer will start when Android detects the receiver picks up (audio mode change)
-      // and sends 'answered'
-      debugPrint("[$timestamp] INSTRUMENTATION-CHAIN: Outgoing call dialing (waiting for receiver to pick up)");
       notifyListeners();
     } else if (state == 'ended') {
-      if (_currentCall?.state == CallState.ended) return; // ignore duplicate
+      if (_currentCall?.state == CallState.ended) return;
       _durationTimer?.cancel();
       _stopwatch.stop();
       _currentCall?.state = CallState.ended;
@@ -165,7 +128,7 @@ class CallManager extends ChangeNotifier {
       notifyListeners();
 
       callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
-      
+
       Future.delayed(const Duration(seconds: 3), () {
         callPresenter?.dismissCall();
       });
@@ -191,44 +154,29 @@ class CallManager extends ChangeNotifier {
   }
 
   Future<void> rejectCall() async {
-    debugPrint("INSTRUMENTATION: rejectCall invoked.");
     if (_currentCall == null) return;
     lastNativeError = null;
     notifyListeners();
-    debugPrint("INSTRUMENTATION: rejectCall sending reject_call over wsService");
     wsService.send({'type': MessageTypes.rejectCall});
   }
 
   Future<void> cancelOutgoingCall() async {
-    final timestamp = DateTime.now().toIso8601String();
-    debugPrint("[$timestamp] INSTRUMENTATION: cancelOutgoingCall invoked.");
-    if (_currentCall == null || _currentCall!.direction != CallDirection.outgoing) {
-        debugPrint("[$timestamp] INSTRUMENTATION: cancelOutgoingCall aborted. _currentCall=$_currentCall");
-        return;
-    }
+    if (_currentCall == null || _currentCall!.direction != CallDirection.outgoing) return;
     lastNativeError = null;
     notifyListeners();
-    final payload = {'type': MessageTypes.rejectCall};
-    debugPrint("[$timestamp] INSTRUMENTATION: cancelOutgoingCall sending JSON payload over wsService: $payload");
-    wsService.send(payload);
+    wsService.send({'type': MessageTypes.rejectCall});
   }
 
   Future<void> endCall() async {
-    final timestamp = DateTime.now().toIso8601String();
-    debugPrint("[$timestamp] INSTRUMENTATION: endCall invoked.");
     if (_currentCall == null) return;
     isEnding = true;
     lastNativeError = null;
     notifyListeners();
-    final payload = {'type': MessageTypes.endCall};
-    debugPrint("[$timestamp] INSTRUMENTATION: endCall sending JSON payload over wsService: $payload");
-    wsService.send(payload);
+    wsService.send({'type': MessageTypes.endCall});
   }
 
   Future<void> dial(String number, {String? contactName}) async {
     final cleanNumber = number.replaceAll(RegExp(r'[^\d+]'), '');
-    debugPrint("INSTRUMENTATION: dial invoked for number: $number (cleaned: $cleanNumber)");
-    
     final resolvedName = _resolveContactName(cleanNumber, contactName);
 
     _currentCall = Call(
@@ -239,7 +187,6 @@ class CallManager extends ChangeNotifier {
     );
     notifyListeners();
 
-    // Show native popup for outgoing call
     callPresenter?.showCall(_currentCall!);
 
     if (Platform.isAndroid || Platform.isIOS) {
@@ -250,7 +197,7 @@ class CallManager extends ChangeNotifier {
         notifyListeners();
       }
     } else {
-      debugPrint('INSTRUMENTATION: dial sending dial over wsService'); wsService.send({'type': MessageTypes.dial, 'number': cleanNumber});
+      wsService.send({'type': MessageTypes.dial, 'number': cleanNumber});
     }
   }
 

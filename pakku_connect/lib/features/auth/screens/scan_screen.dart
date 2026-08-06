@@ -111,7 +111,7 @@ class _ScanScreenState extends State<ScanScreen> {
       } else {
         setState(() {
           _verifying = false;
-          _error = 'READ_PHONE_STATE and READ_CALL_LOG are required for remote call control.\n\nREAD_CONTACTS is required for contact synchronization.\n\nPlease grant these permissions in Android Settings to use the app.';
+          _error = 'READ_PHONE_STATE is required for remote call control.\n\nREAD_CONTACTS is required for contact synchronization.\n\nPlease grant these permissions in Android Settings to use the app.';
         });
       }
     } catch (e, st) {

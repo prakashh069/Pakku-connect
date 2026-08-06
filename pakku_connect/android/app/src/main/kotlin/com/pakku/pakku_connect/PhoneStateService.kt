@@ -37,6 +37,9 @@ import javax.net.ssl.X509TrustManager
 class PhoneStateService : Service() {
     private var httpClient: OkHttpClient? = null
     private var webSocket: WebSocket? = null
+    private val socketLock = Any()
+    @Volatile
+    private var authenticated = false
     private var telephonyManager: TelephonyManager? = null
 
     private var callStateReceiver: android.content.BroadcastReceiver? = null
@@ -65,8 +68,10 @@ class PhoneStateService : Service() {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 Log.d(TAG, "Network available, triggering immediate reconnect")
-                mainHandler.removeCallbacks(reconnectRunnable)
-                mainHandler.post { startWebSocket() }
+                synchronized(socketLock) {
+                    mainHandler.removeCallbacks(reconnectRunnable)
+                    mainHandler.post { startWebSocket() }
+                }
             }
         }
         val request = NetworkRequest.Builder()
@@ -81,7 +86,7 @@ class PhoneStateService : Service() {
         if (intent?.action == "com.pakku.pakku_connect.UNPAIR") {
             try {
                 val json = JSONObject().apply { put("type", "unpair") }
-                webSocket?.send(json.toString())
+                sendAuthenticated(json.toString())
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send unpair message", e)
             }
@@ -130,7 +135,7 @@ class PhoneStateService : Service() {
         }
         return OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
-            .pingInterval(15, TimeUnit.SECONDS)
+            .pingInterval(30, TimeUnit.SECONDS)
             .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
             .hostnameVerifier { _, _ -> true }
             .build()
@@ -157,7 +162,7 @@ class PhoneStateService : Service() {
         }
         return OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
-            .pingInterval(15, TimeUnit.SECONDS)
+            .pingInterval(30, TimeUnit.SECONDS)
             .sslSocketFactory(sslContext.socketFactory, pinningTrustManager)
             .hostnameVerifier { _, _ -> true }
             .build()
@@ -187,12 +192,12 @@ class PhoneStateService : Service() {
     private val reconnectRunnable = Runnable { startWebSocket() }
 
     private fun stopWebSocket() {
-        // Enforce exactly one reconnect timer
-        mainHandler.removeCallbacks(reconnectRunnable)
-        
-        // Enforce exactly one WebSocket connection
-        webSocket?.cancel()
-        webSocket = null
+        synchronized(socketLock) {
+            authenticated = false
+            mainHandler.removeCallbacks(reconnectRunnable)
+            webSocket?.cancel()
+            webSocket = null
+        }
     }
 
     private fun scheduleReconnect() {
@@ -207,61 +212,95 @@ class PhoneStateService : Service() {
     }
 
     private fun startWebSocket() {
-        stopWebSocket()
+        synchronized(socketLock) {
+            stopWebSocket()
 
-        val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
-        val ip = prefs.getString("ws_ip", "") ?: ""
-        val port = prefs.getInt("ws_port", 0)
-        val certFp = prefs.getString("cert_fp", "") ?: ""
+            val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
+            val ip = prefs.getString("ws_ip", "") ?: ""
+            val port = prefs.getInt("ws_port", 0)
+            val certFp = prefs.getString("cert_fp", "") ?: ""
 
-        // Validate configuration thoroughly before proceeding
-        if (ip.isEmpty() || port !in 1..65535) {
-            Log.e(TAG, "Invalid WebSocket configuration: ip=$ip, port=$port")
-            return
-        }
-        if (certFp.isNotEmpty() && !certFp.matches(Regex("^[0-9a-fA-F]{64}$"))) {
-            Log.e(TAG, "Invalid certificate fingerprint format: $certFp")
-            return
-        }
+            // Validate configuration thoroughly before proceeding
+            if (ip.isEmpty() || port !in 1..65535) {
+                Log.e(TAG, "Invalid WebSocket configuration: ip=$ip, port=$port")
+                return
+            }
+            if (certFp.isNotEmpty() && !certFp.matches(Regex("^[0-9a-fA-F]{64}$"))) {
+                Log.e(TAG, "Invalid certificate fingerprint format: $certFp")
+                return
+            }
 
-        val url = "wss://$ip:$port"
+            val url = "wss://$ip:$port"
 
-        val client = try {
-            getOkHttpClient(certFp)
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "Cannot start WebSocket: ${e.message}")
-            return
-        }
+            val client = try {
+                getOkHttpClient(certFp)
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Cannot start WebSocket: ${e.message}")
+                return
+            }
 
-        val request = Request.Builder().url(url).build()
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            val request = Request.Builder().url(url).build()
+            Log.d(TAG, "WebSocket CONNECT")
+            webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.d(TAG, "WSS connected")
-                reconnectAttempt = 0
-                try {
-                    val msg = JSONObject()
-                    msg.put("type", "device_state")
-                    msg.put("state", "connected")
-                    val jsonStr = msg.toString()
-                    Log.d(TAG, "DEBUG: About to send device_state: \$jsonStr")
-                    val success = webSocket.send(jsonStr)
-                    Log.d(TAG, "DEBUG: webSocket.send returned: \$success")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to send device_state: ${e.message}")
+                synchronized(socketLock) {
+                    if (this@PhoneStateService.webSocket !== webSocket) {
+                        Log.d(TAG, "Stale socket onOpen, cancelling")
+                        webSocket.cancel()
+                        return
+                    }
+                    
+                    Log.d(TAG, "WebSocket OPEN")
+                    reconnectAttempt = 0
+                    try {
+                        val helloMsg = JSONObject().apply {
+                            put("type", "hello")
+                            put("deviceName", android.os.Build.MODEL)
+                            put("platform", "android_service")
+                        }
+                        Log.d(TAG, "SEND hello")
+                        webSocket.send(helloMsg.toString())
+
+                        authenticated = true
+
+                        val msg = JSONObject().apply {
+                            put("type", "device_state")
+                            put("state", "connected")
+                        }
+                        Log.d(TAG, "SEND device_state")
+                        webSocket.send(msg.toString())
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to send initial messages: ${e.message}")
+                    }
                 }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WSS failure: ${t.message}")
-                if (this@PhoneStateService.webSocket === webSocket) {
+                synchronized(socketLock) {
+                    if (this@PhoneStateService.webSocket !== webSocket) return
+                    Log.e(TAG, "WSS failure: ${t.message}")
+                    authenticated = false
                     scheduleReconnect()
                 }
             }
 
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                synchronized(socketLock) {
+                    if (this@PhoneStateService.webSocket !== webSocket) {
+                        webSocket.cancel()
+                        return
+                    }
+                }
+            }
+
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WSS closed: $code $reason")
-                if (this@PhoneStateService.webSocket === webSocket && code != 1000) {
-                    scheduleReconnect()
+                synchronized(socketLock) {
+                    if (this@PhoneStateService.webSocket !== webSocket) return
+                    Log.d(TAG, "WSS closed: $code $reason")
+                    if (code != 1000) {
+                        authenticated = false
+                        scheduleReconnect()
+                    }
                 }
             }
 
@@ -270,21 +309,20 @@ class PhoneStateService : Service() {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                Log.d(TAG, "ANDROID RECEIVED:\n$text")
+                synchronized(socketLock) {
+                    if (this@PhoneStateService.webSocket !== webSocket) return
+                }
                 try {
                     val json = JSONObject(text)
                     val msgType = json.optString("type")
-                    Log.d(TAG, "Dispatching:\n$msgType")
                     when (msgType) {
                         "unpair" -> {
-                            Log.d(TAG, "Received unpair from Mac")
+                            Log.i(TAG, "Received unpair command")
                             val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
                             prefs.edit().putBoolean("paired", false).apply()
-                            
                             val broadcastIntent = Intent("com.pakku.pakku_connect.UNPAIRED")
                             broadcastIntent.setPackage(packageName)
                             sendBroadcast(broadcastIntent)
-                            
                             stopSelf()
                         }
                         "contacts_request" -> {
@@ -304,31 +342,20 @@ class PhoneStateService : Service() {
                             }
                         }
                         "reject_call" -> {
-                            Log.d(TAG, "INSTRUMENTATION: Entered handler for reject_call.")
                             try {
                                 val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                                val hasCallPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                val hasAnswerPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.ANSWER_PHONE_CALLS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                Log.d(TAG, "INSTRUMENTATION: Current TelephonyManager.callState=$lastState")
-                                Log.d(TAG, "INSTRUMENTATION: SDK version=${Build.VERSION.SDK_INT}")
-                                Log.d(TAG, "INSTRUMENTATION: CALL_PHONE permission=$hasCallPhone")
-                                Log.d(TAG, "INSTRUMENTATION: ANSWER_PHONE_CALLS permission=$hasAnswerPhone")
-                                Log.d(TAG, "INSTRUMENTATION: Is TelecomManager null? ${tm == null}")
-                                
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                    Log.d(TAG, "INSTRUMENTATION: Calling TelecomManager.endCall().")
-                                    val result = tm.endCall()
-                                    Log.d(TAG, "INSTRUMENTATION: Boolean return value=$result")
+                                    tm.endCall()
+                                    Log.d(TAG, "Native reject executed")
                                 } else {
                                     @Suppress("DEPRECATION")
                                     tm.silenceRinger()
-                                    Log.d(TAG, "INSTRUMENTATION: legacy silenceRinger called")
+                                    Log.d(TAG, "Native silenceRinger executed (legacy)")
                                 }
-                                Log.d(TAG, "Native reject executed")
                             } catch (e: SecurityException) {
-                                Log.e(TAG, "INSTRUMENTATION: Any SecurityException in reject_call:", e)
+                                Log.e(TAG, "Permission denied for reject_call", e)
                             } catch (e: Exception) {
-                                Log.e(TAG, "INSTRUMENTATION: Any other exception in reject_call:", e)
+                                Log.e(TAG, "Failed to reject call", e)
                             }
                         }
                         "end_call" -> {
@@ -341,7 +368,7 @@ class PhoneStateService : Service() {
                                     val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
                                     if (ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                                         tm.placeCall(Uri.parse("tel:$number"), android.os.Bundle())
-                                        Log.d(TAG, "Native dial executed via TelecomManager")
+                                        Log.d(TAG, "Native dial executed")
                                     } else {
                                         Log.e(TAG, "Missing CALL_PHONE permission for dial")
                                     }
@@ -352,49 +379,43 @@ class PhoneStateService : Service() {
                                 }
                             }
                         }
+                        else -> Log.w(TAG, "Unhandled message type: $msgType")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to parse/handle control message: ${e.message}")
                 }
             }
         })
+        }
     }
 
     private fun handleEndCall(ws: WebSocket?) {
-        Log.d(TAG, "INSTRUMENTATION: Entered handler for end_call.")
         try {
             val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-            val hasCallPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.CALL_PHONE) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            val hasAnswerPhone = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.ANSWER_PHONE_CALLS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            Log.d(TAG, "INSTRUMENTATION: Current TelephonyManager.callState=$lastState")
-            Log.d(TAG, "INSTRUMENTATION: SDK version=${Build.VERSION.SDK_INT}")
-            Log.d(TAG, "INSTRUMENTATION: CALL_PHONE permission=$hasCallPhone")
-            Log.d(TAG, "INSTRUMENTATION: ANSWER_PHONE_CALLS permission=$hasAnswerPhone")
-            Log.d(TAG, "INSTRUMENTATION: Is TelecomManager null? ${tm == null}")
-            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                Log.d(TAG, "INSTRUMENTATION: Calling TelecomManager.endCall().")
                 val result = tm.endCall()
-                Log.d(TAG, "INSTRUMENTATION: Boolean return value=$result")
+                Log.d(TAG, "Native endCall executed (result=$result)")
             } else {
                 @Suppress("DEPRECATION")
                 tm.silenceRinger()
-                Log.d(TAG, "INSTRUMENTATION: legacy silenceRinger called")
+                Log.d(TAG, "Native silenceRinger executed (legacy)")
             }
-            Log.d(TAG, "Native endCall executed")
-            ws?.send("""{"type":"action_result","action":"end_call","success":true}""")
+            Log.d(TAG, "SEND reject_call")
+            sendAuthenticated("""{"type":"action_result","action":"end_call","success":true}""")
         } catch (e: SecurityException) {
-            Log.e(TAG, "INSTRUMENTATION: Any SecurityException in end_call:", e)
-            ws?.send("""{"type":"action_result","action":"end_call","success":false,"error":"Permission denied"}""")
+            Log.e(TAG, "Permission denied for end_call", e)
+            sendAuthenticated("""{"type":"action_result","action":"end_call","success":false,"error":"Permission denied"}""")
         } catch (e: Exception) {
-            Log.e(TAG, "INSTRUMENTATION: Any other exception in end_call:", e)
-            ws?.send("""{"type":"action_result","action":"end_call","success":false,"error":"${e.message}"}""")
+            Log.e(TAG, "Failed to end call", e)
+            sendAuthenticated("""{"type":"action_result","action":"end_call","success":false,"error":"${e.message}"}""")
         }
     }
 
     private fun syncContacts() {
-        val jsonArray = JSONArray()
+        Log.d(TAG, "Syncing contacts...")
         try {
+            val contactsArray = JSONArray()
+            val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
             val projection = arrayOf(
                 ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
@@ -402,14 +423,10 @@ class PhoneStateService : Service() {
                 ContactsContract.CommonDataKinds.Phone.TYPE,
                 ContactsContract.CommonDataKinds.Phone.LABEL
             )
-            val cursor = contentResolver.query(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                projection,
-                null,
-                null,
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-            )
-            
+            val cursor = contentResolver.query(uri, projection, null, null, null)
+
+            val contactsMap = mutableMapOf<String, JSONObject>()
+
             cursor?.use {
                 val idIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID)
                 val nameIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
@@ -417,51 +434,51 @@ class PhoneStateService : Service() {
                 val typeIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE)
                 val labelIdx = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.LABEL)
 
-                val contactsMap = mutableMapOf<String, JSONObject>()
-
                 while (it.moveToNext()) {
-                    val id = it.getString(idIdx) ?: continue
+                    val id = it.getString(idIdx)
                     val name = it.getString(nameIdx) ?: ""
-                    val number = it.getString(numIdx) ?: ""
+                    val num = it.getString(numIdx) ?: ""
                     val type = it.getInt(typeIdx)
                     var label = it.getString(labelIdx) ?: ""
-                    
+
                     if (label.isEmpty()) {
-                        label = ContactsContract.CommonDataKinds.Phone.getTypeLabel(resources, type, "").toString()
+                        label = ContactsContract.CommonDataKinds.Phone.getTypeLabel(
+                            resources, type, ""
+                        ).toString()
                     }
 
                     val phoneObj = JSONObject().apply {
                         put("label", label)
-                        put("number", number)
+                        put("number", num)
                     }
 
-                    if (!contactsMap.containsKey(id)) {
-                        val contactObj = JSONObject().apply {
+                    if (contactsMap.containsKey(id)) {
+                        contactsMap[id]!!.getJSONArray("phones").put(phoneObj)
+                    } else {
+                        val cObj = JSONObject().apply {
                             put("id", id)
                             put("displayName", name)
-                            put("phones", JSONArray())
+                            val pArray = JSONArray().apply { put(phoneObj) }
+                            put("phones", pArray)
                         }
-                        contactsMap[id] = contactObj
+                        contactsMap[id] = cObj
                     }
-                    
-                    contactsMap[id]?.getJSONArray("phones")?.put(phoneObj)
-                }
-                
-                for (contact in contactsMap.values) {
-                    jsonArray.put(contact)
                 }
             }
-            
-            val response = JSONObject().apply {
+
+            for ((_, v) in contactsMap) {
+                contactsArray.put(v)
+            }
+
+            val payload = JSONObject().apply {
                 put("type", "contacts")
-                put("contacts", jsonArray)
+                put("contacts", contactsArray)
             }
-            webSocket?.send(response.toString())
-            Log.d(TAG, "Sent ${jsonArray.length()} contacts")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Permission denied to read contacts", e)
+
+            Log.d(TAG, "SEND contacts")
+            sendAuthenticated(payload.toString())
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to sync contacts", e)
+            Log.e(TAG, "Failed to sync contacts: ${e.message}")
         }
     }
 
@@ -470,7 +487,6 @@ class PhoneStateService : Service() {
     // ---------------------------------------------------------------
 
     private fun startPhoneListener() {
-        Log.d(TAG, "INSTRUMENTATION: startPhoneListener() invoked. isListenersStarted=$isListenersStarted")
         if (isListenersStarted) return
         telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
@@ -478,44 +494,21 @@ class PhoneStateService : Service() {
                 this,
                 android.Manifest.permission.READ_PHONE_STATE
             ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            Log.e(TAG, "INSTRUMENTATION: READ_PHONE_STATE not granted. Telephony listener not started.")
+            Log.e(TAG, "READ_PHONE_STATE not granted — telephony listener not started")
             return
         }
 
         try {
             val receiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
-                    val timestamp = System.currentTimeMillis()
-                    Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: BroadcastReceiver triggered. Action: ${intent?.action}")
-                    
                     if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
                         val stateStr = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
-                        val hasNumberExtra = intent.hasExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
                         var number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
-                        
+
                         if (number == null && latestScreenedNumber != null) {
                             number = latestScreenedNumber
-                            Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: Using number from CallScreeningService: $number")
-                            latestScreenedNumber = null // Reset after use
+                            latestScreenedNumber = null
                         }
-                        
-                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: stateStr=$stateStr")
-                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: hasExtra(EXTRA_INCOMING_NUMBER)=$hasNumberExtra")
-                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: EXTRA_INCOMING_NUMBER=${number != null}")
-                        
-                        if (intent.extras != null) {
-                            val bundle = intent.extras!!
-                            val keys = bundle.keySet()
-                            for (key in keys) {
-                                val value = bundle.get(key)
-                                Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: Extra Key: $key, Value type: ${value?.javaClass?.simpleName}, isNull: ${value == null}")
-                            }
-                        }
-
-                        val readPhoneStateGranted = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                        val readCallLogGranted = ContextCompat.checkSelfPermission(this@PhoneStateService, android.Manifest.permission.READ_CALL_LOG) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: READ_PHONE_STATE granted: $readPhoneStateGranted")
-                        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: READ_CALL_LOG granted: $readCallLogGranted")
 
                         val state = when (stateStr) {
                             TelephonyManager.EXTRA_STATE_RINGING -> TelephonyManager.CALL_STATE_RINGING
@@ -533,10 +526,9 @@ class PhoneStateService : Service() {
             val notifReceiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     if (intent?.action == CallNotificationListenerService.ACTION_CALL_ANSWERED) {
-                        Log.d(TAG, "INSTRUMENTATION: Received CALL_ANSWERED from NotificationListener")
                         if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
-                            webSocket?.send("""{"type":"call_state","state":"answered"}""")
-                            Log.d(TAG, "Sent call_state=answered (outgoing picked up via notification)")
+                            sendAuthenticated("""{"type":"call_state","state":"answered"}""")
+                            Log.d(TAG, "Sent call_state=answered (outgoing via notification)")
                         }
                     }
                 }
@@ -549,75 +541,57 @@ class PhoneStateService : Service() {
                 registerReceiver(notifReceiver, notifFilter)
             }
 
-            Log.d(TAG, "INSTRUMENTATION: BroadcastReceiver registered successfully")
             isListenersStarted = true
-            Log.d(TAG, "INSTRUMENTATION: isListenersStarted set to true")
+            Log.i(TAG, "Telephony listeners registered")
         } catch (e: SecurityException) {
-            Log.e(TAG, "INSTRUMENTATION: SecurityException during listener registration", e)
-            // Note: Degrades gracefully; the service won't crash, but it won't emit telephony updates.
+            Log.e(TAG, "SecurityException registering telephony listener", e)
+            // Degrades gracefully; the service won't crash, but it won't emit telephony updates.
         }
     }
 
     /** Shared by both the legacy and modern telephony callback paths. */
     private fun handleStateChange(state: Int, phoneNumber: String?) {
-        val lastStateStr = when(lastState) {
-            TelephonyManager.CALL_STATE_IDLE -> "IDLE"
-            TelephonyManager.CALL_STATE_RINGING -> "RINGING"
-            TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
-            else -> "UNKNOWN"
-        }
         val stateStr = when(state) {
             TelephonyManager.CALL_STATE_IDLE -> "IDLE"
             TelephonyManager.CALL_STATE_RINGING -> "RINGING"
             TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
             else -> "UNKNOWN"
         }
-        Log.d(TAG, "INSTRUMENTATION: Telephony transition: $lastStateStr -> $stateStr")
-        
+        Log.d(TAG, "Telephony state: $stateStr")
+
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
-                Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_RINGING block")
                 val number = phoneNumber ?: "Unknown"
                 val msg = """{"type":"incoming_call","phoneNumber":"$number","contactName":""}"""
-                webSocket?.send(msg)
-                Log.d(TAG, "Sent incoming_call ($number)")
+                Log.d(TAG, "SEND incoming_call")
+                sendAuthenticated(msg)
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
                 val isIncomingAnswered = lastState == TelephonyManager.CALL_STATE_RINGING
                 val isOutgoingConnected = lastState == TelephonyManager.CALL_STATE_IDLE
-                Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_OFFHOOK block. isIncomingAnswered=$isIncomingAnswered, isOutgoingConnected=$isOutgoingConnected")
 
                 if (isIncomingAnswered) {
-                    webSocket?.send("""{"type":"call_state","state":"answered"}""")
-                    Log.d(TAG, "Sent call_state=answered (incoming picked up)")
+                    Log.d(TAG, "SEND call_state")
+                    sendAuthenticated("""{"type":"call_state","state":"answered"}""")
                 } else if (isOutgoingConnected) {
-                    webSocket?.send("""{"type":"call_state","state":"dialing"}""")
-                    Log.d(TAG, "Sent call_state=dialing (outgoing started)")
-                } else {
-                    Log.d(TAG, "INSTRUMENTATION: condition (isIncomingAnswered || isOutgoingConnected) was FALSE. Skipping emission.")
+                    Log.d(TAG, "SEND call_state")
+                    sendAuthenticated("""{"type":"call_state","state":"dialing"}""")
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
-                Log.d(TAG, "INSTRUMENTATION: Entered CALL_STATE_IDLE block")
                 if (lastState == TelephonyManager.CALL_STATE_RINGING ||
                     lastState == TelephonyManager.CALL_STATE_OFFHOOK
                 ) {
-                    Log.d(TAG, "INSTRUMENTATION: Sending call_state=ended")
-                    webSocket?.send("""{"type":"call_state","state":"ended"}""")
-                } else {
-                    Log.d(TAG, "INSTRUMENTATION: CALL_STATE_IDLE block condition not met (lastState was not RINGING or OFFHOOK). Skipping ended emission.")
+                    Log.d(TAG, "SEND call_state")
+                    sendAuthenticated("""{"type":"call_state","state":"ended"}""")
                 }
                 // Missed call: went straight from RINGING to IDLE, never OFFHOOK.
                 if (lastState == TelephonyManager.CALL_STATE_RINGING) {
                     showMissedCallNotification(phoneNumber ?: "Unknown")
                 }
             }
-            else -> {
-                Log.d(TAG, "INSTRUMENTATION: Unrecognized state block: $state")
-            }
         }
         lastState = state
-        Log.d(TAG, "INSTRUMENTATION: handleStateChange finished. lastState updated to $lastState")
     }
 
 
@@ -675,7 +649,18 @@ class PhoneStateService : Service() {
     companion object {
         private const val TAG = "PhoneStateService"
         private const val CHANNEL_ID = "pakku_call_service"
+        @Volatile
         var latestScreenedNumber: String? = null
         val running = AtomicBoolean(false)
+    }
+
+    private fun sendAuthenticated(msg: String) {
+        synchronized(socketLock) {
+            if (!authenticated || webSocket == null) {
+                Log.w(TAG, "Dropped message because connection is not authenticated: $msg")
+                return
+            }
+            webSocket?.send(msg)
+        }
     }
 }

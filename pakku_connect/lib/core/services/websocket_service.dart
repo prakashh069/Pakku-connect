@@ -22,6 +22,7 @@ class WebSocketService {
   String? _url;
   bool _isIntentionalDisconnect = false;
   bool _paused = false;
+  bool _authenticated = false;
 
   void Function(String phoneNumber, String? contactName)? onIncomingCall;
   void Function(String state)? onCallState; // "answered" | "ended"
@@ -68,21 +69,34 @@ class WebSocketService {
             (X509Certificate cert, String host, int port) => true;
       }
 
+      debugPrint('WebSocketService: WebSocket CONNECT');
       _channel = IOWebSocketChannel.connect(
         Uri.parse(_url!),
         customClient: client,
-        pingInterval: const Duration(seconds: 15),
+        pingInterval: const Duration(seconds: 30),
       );
+
+      debugPrint('WebSocketService: WebSocket OPEN');
+      debugPrint('WebSocketService: SEND hello');
+      _channel!.sink.add(jsonEncode({
+        'type': 'hello',
+        'deviceName': Platform.isMacOS ? 'Mac' : 'Unknown',
+        'platform': Platform.operatingSystem,
+      }));
+      _authenticated = true;
+      debugPrint('WebSocketService: Connection ready');
 
       _channel!.stream.listen(
         _onMessage,
         onError: (e, st) {
           debugPrint('WebSocketService: Connection error: $e\n$st');
+          _authenticated = false;
           onConnectionChange?.call(false);
           _scheduleReconnect();
         },
         onDone: () {
           debugPrint('WebSocketService: Connection closed');
+          _authenticated = false;
           onConnectionChange?.call(false);
           _scheduleReconnect();
         },
@@ -91,6 +105,7 @@ class WebSocketService {
       onConnectionChange?.call(true);
     } catch (e, st) {
       debugPrint('WebSocketService: Failed to connect: $e\n$st');
+      _authenticated = false;
       onConnectionChange?.call(false);
       _scheduleReconnect();
     }
@@ -167,6 +182,11 @@ class WebSocketService {
   }
 
   void send(Map<String, dynamic> message) {
+    if (!_authenticated) {
+      debugPrint('WebSocketService: Dropping message because socket is not authenticated: $message');
+      return;
+    }
+    debugPrint('WebSocketService: SEND outbound message (${message['type']})');
     _channel?.sink.add(jsonEncode(message));
   }
 
@@ -176,6 +196,7 @@ class WebSocketService {
 
   void disconnect() {
     _isIntentionalDisconnect = true;
+    _authenticated = false;
     _reconnectTimer?.cancel();
     _channel?.sink.close();
     onDeviceStateChanged?.call(DeviceSessionState.disconnected);
@@ -184,6 +205,7 @@ class WebSocketService {
   void pause() {
     _paused = true;
     _isIntentionalDisconnect = true;
+    _authenticated = false;
     _reconnectTimer?.cancel();
     _channel?.sink.close();
     onDeviceStateChanged?.call(DeviceSessionState.paused);

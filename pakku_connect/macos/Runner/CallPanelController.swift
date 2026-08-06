@@ -61,7 +61,8 @@ class CallPanelController {
                         backing: .buffered,
                         defer: false)
         p.level = .floating
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        p.hidesOnDeactivate = false
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = true
@@ -204,7 +205,13 @@ class CallPanelController {
     
     func updateCall(state: String, elapsedSeconds: Int) {
         DispatchQueue.main.async {
-            guard let p = self.panel, p.isVisible else { return }
+            guard let p = self.panel else { return }
+            
+            // If the panel is hidden, but we are updating an active call, we should ensure it's visible
+            if !p.isVisible && (state != "ended" && state != "declinedRemotely") {
+                p.alphaValue = 1.0
+                p.orderFrontRegardless()
+            }
             
             if state == "ended" || state == "declinedRemotely" {
                 self.acceptButton.isHidden = true
