@@ -14,28 +14,41 @@ class ClipboardReaderActivity : Activity() {
         const val ACTION_SEND_TO_MAC = "com.pakku.pakku_connect.ACTION_SEND_TO_MAC"
     }
 
+    private var hasProcessed = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        var textToSend: String? = null
-
-        when (intent.action) {
-            Intent.ACTION_SEND -> {
-                // Triggered from Share menu
-                if ("text/plain" == intent.type) {
-                    textToSend = intent.getStringExtra(Intent.EXTRA_TEXT)
-                }
+        if (intent.action == Intent.ACTION_SEND) {
+            // Triggered from Share menu - no need to wait for focus
+            var textToSend: String? = null
+            if ("text/plain" == intent.type) {
+                textToSend = intent.getStringExtra(Intent.EXTRA_TEXT)
             }
-            ACTION_READ_CLIPBOARD -> {
-                // Triggered from notification action
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                if (clipboard.hasPrimaryClip() && clipboard.primaryClip != null) {
-                    val item = clipboard.primaryClip!!.getItemAt(0)
-                    textToSend = item.text?.toString()
-                }
-            }
+            sendAndFinish(textToSend)
         }
+        // If it's ACTION_READ_CLIPBOARD, we wait for onWindowFocusChanged
+    }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !hasProcessed && intent.action == ACTION_READ_CLIPBOARD) {
+            hasProcessed = true
+            var textToSend: String? = null
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            
+            // Log for debugging
+            Log.d("ClipboardReader", "hasPrimaryClip: ${clipboard.hasPrimaryClip()}")
+            
+            if (clipboard.hasPrimaryClip() && clipboard.primaryClip != null) {
+                val item = clipboard.primaryClip!!.getItemAt(0)
+                textToSend = item.text?.toString()
+            }
+            sendAndFinish(textToSend)
+        }
+    }
+
+    private fun sendAndFinish(textToSend: String?) {
         if (textToSend != null && textToSend.isNotEmpty()) {
             val broadcastIntent = Intent(ACTION_SEND_TO_MAC)
             broadcastIntent.putExtra("text", textToSend)

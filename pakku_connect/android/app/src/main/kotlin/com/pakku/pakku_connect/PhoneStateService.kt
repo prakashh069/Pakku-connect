@@ -655,7 +655,9 @@ class PhoneStateService : Service() {
                         val text = intent.getStringExtra("text")
                         if (!text.isNullOrEmpty()) {
                             val payload = JSONObject().apply {
+                                put("schemaVersion", 1)
                                 put("type", "share.clipboard")
+                                put("timestamp", System.currentTimeMillis())
                                 put("payload", JSONObject().apply {
                                     put("text", text)
                                     put("id", java.util.UUID.randomUUID().toString())
