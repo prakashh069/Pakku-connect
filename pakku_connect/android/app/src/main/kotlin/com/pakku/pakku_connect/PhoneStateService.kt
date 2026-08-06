@@ -409,17 +409,41 @@ class PhoneStateService : Service() {
                         "share.clipboard" -> {
                             val payloadObj = json.optJSONObject("payload")
                             val clipboardText = payloadObj?.optString("text")
+                            val imageBase64 = payloadObj?.optString("imageBase64")
                             val deviceName = payloadObj?.optString("deviceName") ?: "Mac"
                             
-                            if (!clipboardText.isNullOrEmpty()) {
+                            var savedImagePath: String? = null
+                            if (!imageBase64.isNullOrEmpty()) {
+                                try {
+                                    val imageBytes = android.util.Base64.decode(imageBase64, android.util.Base64.DEFAULT)
+                                    val cacheFile = java.io.File(cacheDir, "received_image.png")
+                                    val outputStream = java.io.FileOutputStream(cacheFile)
+                                    outputStream.write(imageBytes)
+                                    outputStream.close()
+                                    savedImagePath = cacheFile.absolutePath
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to decode/save received image", e)
+                                }
+                            }
+                            
+                            if (!clipboardText.isNullOrEmpty() || savedImagePath != null) {
                                 if (MainActivity.isAppInForeground) {
                                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                         try {
                                             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                            val clip = android.content.ClipData.newPlainText("Copied from $deviceName", clipboardText)
+                                            val clip: android.content.ClipData
+                                            var snippet = ""
+                                            if (savedImagePath != null) {
+                                                val file = java.io.File(savedImagePath)
+                                                val uri = androidx.core.content.FileProvider.getUriForFile(this@PhoneStateService, "$packageName.fileprovider", file)
+                                                clip = android.content.ClipData.newUri(contentResolver, "Copied from $deviceName", uri)
+                                                snippet = "🖼️ Image"
+                                            } else {
+                                                clip = android.content.ClipData.newPlainText("Copied from $deviceName", clipboardText)
+                                                snippet = if (clipboardText != null && clipboardText.length > 30) clipboardText.substring(0, 27) + "..." else (clipboardText ?: "")
+                                            }
                                             clipboard.setPrimaryClip(clip)
                                             
-                                            val snippet = if (clipboardText.length > 30) clipboardText.substring(0, 27) + "..." else clipboardText
                                             android.widget.Toast.makeText(this@PhoneStateService, "Copied from $deviceName\n$snippet", android.widget.Toast.LENGTH_SHORT).show()
                                         } catch (e: Exception) {
                                             Log.e(TAG, "Foreground copy failed", e)
@@ -430,11 +454,14 @@ class PhoneStateService : Service() {
                                         val intent = Intent(this@PhoneStateService, ClipboardWriterActivity::class.java).apply {
                                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
                                             putExtra("clipboard_text", clipboardText)
+                                            if (savedImagePath != null) {
+                                                putExtra("image_path", savedImagePath)
+                                            }
                                             putExtra("device_name", deviceName)
                                         }
                                         startActivity(intent)
                                     } else {
-                                        showClipboardNotification(clipboardText, deviceName)
+                                        showClipboardNotification(clipboardText ?: "🖼️ Image", deviceName, savedImagePath)
                                     }
                                 }
                             }
@@ -557,7 +584,7 @@ class PhoneStateService : Service() {
         }
     }
 
-    private fun showClipboardNotification(text: String, deviceName: String) {
+    private fun showClipboardNotification(text: String, deviceName: String, imagePath: String?) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         val channelId = "pakku_clipboard_channel"
         
@@ -572,12 +599,16 @@ class PhoneStateService : Service() {
 
         val intent = Intent(this, ClipboardWriterActivity::class.java).apply {
             putExtra("clipboard_text", text)
+            if (imagePath != null) {
+                putExtra("image_path", imagePath)
+            }
+            putExtra("device_name", deviceName)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         
         val pendingIntent = android.app.PendingIntent.getActivity(
             this,
-            text.hashCode(),
+            (text + (imagePath ?: "")).hashCode(),
             intent,
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
@@ -585,7 +616,7 @@ class PhoneStateService : Service() {
         val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_menu_edit)
             .setContentTitle("Clipboard from $deviceName")
-            .setContentText("Tap to copy to your phone")
+            .setContentText(if (imagePath != null) "🖼️ Image - Tap to copy" else "Tap to copy to your phone")
             .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .addAction(android.R.drawable.ic_menu_save, "Copy", pendingIntent)
@@ -658,13 +689,40 @@ class PhoneStateService : Service() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     if (intent?.action == "com.pakku.pakku_connect.ACTION_SEND_TO_MAC") {
                         val text = intent.getStringExtra("text")
-                        if (!text.isNullOrEmpty()) {
+                        val imagePath = intent.getStringExtra("imagePath")
+                        
+                        if (!text.isNullOrEmpty() || !imagePath.isNullOrEmpty()) {
+                            var base64Image: String? = null
+                            if (!imagePath.isNullOrEmpty()) {
+                                try {
+                                    val bitmap = android.graphics.BitmapFactory.decodeFile(imagePath)
+                                    if (bitmap != null) {
+                                        val outputStream = java.io.ByteArrayOutputStream()
+                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, outputStream)
+                                        val byteArray = outputStream.toByteArray()
+                                        base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.NO_WRAP)
+                                        
+                                        // Cleanup temporary file
+                                        java.io.File(imagePath).delete()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to encode image", e)
+                                }
+                            }
+
                             val payload = JSONObject().apply {
                                 put("schemaVersion", 1)
                                 put("type", "share.clipboard")
                                 put("timestamp", System.currentTimeMillis())
                                 put("payload", JSONObject().apply {
-                                    put("text", text)
+                                    if (!text.isNullOrEmpty()) {
+                                        put("text", text)
+                                        put("mime", "text/plain")
+                                    }
+                                    if (base64Image != null) {
+                                        put("image", base64Image)
+                                        put("mime", "image/jpeg")
+                                    }
                                     put("id", java.util.UUID.randomUUID().toString())
                                     put("deviceName", android.os.Build.MODEL)
                                 })

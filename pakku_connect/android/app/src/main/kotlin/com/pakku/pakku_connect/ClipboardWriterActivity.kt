@@ -12,14 +12,27 @@ class ClipboardWriterActivity : Activity() {
         super.onCreate(savedInstanceState)
         
         val text = intent.getStringExtra("clipboard_text")
+        val imagePath = intent.getStringExtra("image_path")
         val deviceName = intent.getStringExtra("device_name") ?: "Mac"
-        if (!text.isNullOrEmpty()) {
+        
+        if (!text.isNullOrEmpty() || !imagePath.isNullOrEmpty()) {
             try {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Copied from $deviceName", text)
+                val clip: ClipData
+                var snippet = ""
+                
+                if (!imagePath.isNullOrEmpty()) {
+                    val file = java.io.File(imagePath)
+                    val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+                    clip = ClipData.newUri(contentResolver, "Copied from $deviceName", uri)
+                    snippet = "🖼️ Image"
+                } else {
+                    clip = ClipData.newPlainText("Copied from $deviceName", text)
+                    snippet = if (text != null && text.length > 30) text.substring(0, 27) + "..." else (text ?: "")
+                }
+                
                 clipboard.setPrimaryClip(clip)
                 // Show a brief toast
-                val snippet = if (text.length > 30) text.substring(0, 27) + "..." else text
                 Toast.makeText(this, "Copied from $deviceName\n$snippet", Toast.LENGTH_SHORT).show()
 
                 // Forward to Flutter so ClipboardSyncManager can track _lastReceivedText for deduplication
@@ -29,7 +42,7 @@ class ClipboardWriterActivity : Activity() {
                 jsonPayload.put("type", "share.clipboard")
                 jsonPayload.put("schemaVersion", 1)
                 val innerPayload = org.json.JSONObject()
-                innerPayload.put("text", text)
+                if (text != null) innerPayload.put("text", text)
                 innerPayload.put("deviceName", deviceName)
                 jsonPayload.put("payload", innerPayload)
                 broadcastIntent.putExtra("payload", jsonPayload.toString())
@@ -37,7 +50,7 @@ class ClipboardWriterActivity : Activity() {
 
                 // Persist it natively in case Flutter is dead and misses the broadcast
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                prefs.edit().putString("flutter.lastReceivedClipboardText", text).apply()
+                prefs.edit().putString("flutter.lastReceivedClipboardText", text ?: "image").apply()
                 
                 // Clear the notification
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager

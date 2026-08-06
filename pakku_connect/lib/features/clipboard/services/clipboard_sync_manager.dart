@@ -100,28 +100,34 @@ class ClipboardSyncManager extends ChangeNotifier {
   // Outbound (Android → macOS)
   // ---------------------------------------------------------------------------
 
-  void _onLocalClipboardChanged(String content) {
+  void _onLocalClipboardChanged(String text, String? imageBase64) {
+
     if (!_enabled) return;
-    if (content.isEmpty) return;
-    if (content == _lastReceivedText) return;
+    if (text.isEmpty && imageBase64 == null) return;
+    
+    // Deduplicate outbound
+    final payloadSignature = imageBase64 != null ? 'img:${imageBase64.hashCode}' : 'txt:$text';
+    if (payloadSignature == _lastLocalClipboardID) return;
+    _lastLocalClipboardID = payloadSignature;
 
     // Enforce 64 KB limit measured in UTF-16 code units.
     // Truncated silently — no exception, no retry, no log of contents.
-    String payload = content;
-    if (payload.codeUnits.length > _kMaxClipboardBytes) {
-      payload = String.fromCharCodes(payload.codeUnits.take(_kMaxClipboardBytes));
+    String payloadText = text;
+    if (payloadText.codeUnits.length > _kMaxClipboardBytes) {
+      payloadText = String.fromCharCodes(payloadText.codeUnits.take(_kMaxClipboardBytes));
     }
 
-    _lastLocalClipboardID = _generateUuidV4();
+    final id = _generateUuidV4();
 
     _transport.send({
       'schemaVersion': 1,
       'type': MessageTypes.shareClipboard,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
       'payload': {
-        'id': _lastLocalClipboardID,
-        'mime': 'text/plain',
-        'text': payload,
+        'id': id,
+        'mime': imageBase64 != null ? 'image/png' : 'text/plain',
+        'text': payloadText,
+        'imageBase64': imageBase64,
         'deviceName': _deviceName,
       },
     });
@@ -145,6 +151,7 @@ class ClipboardSyncManager extends ChangeNotifier {
 
     final id = payload['id'] as String?;
     final text = payload['text'] as String?;
+    final imageBase64 = payload['image'] as String?;
     
     if (text != null && text.isNotEmpty) {
       _lastReceivedText = text;
@@ -155,7 +162,7 @@ class ClipboardSyncManager extends ChangeNotifier {
     
     final deviceName = payload['deviceName'] as String? ?? 'Android';
 
-    if (id == null || text == null || text.isEmpty) return;
+    if (id == null || ((text == null || text.isEmpty) && (imageBase64 == null || imageBase64.isEmpty))) return;
 
     // Deduplication — ignore events we already processed.
     if (id == _lastRemoteClipboardID || id == _lastLocalClipboardID) return;
@@ -166,6 +173,7 @@ class ClipboardSyncManager extends ChangeNotifier {
     _inboundController.add(ClipboardShareEvent(
       id: id,
       text: text, // full, untruncated
+      imageBase64: imageBase64,
       deviceName: deviceName,
       timestamp: timestamp,
     ));

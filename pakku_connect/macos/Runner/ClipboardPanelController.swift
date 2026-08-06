@@ -27,6 +27,7 @@ class ClipboardPanelController {
     // State
     private var currentId: String?
     private var fullText: String = ""
+    private var fullImageBase64: String? = nil
     private var dismissWorkItem: DispatchWorkItem?
 
     private init() {}
@@ -39,10 +40,11 @@ class ClipboardPanelController {
         methodChannel?.setMethodCallHandler { [weak self] (call, result) in
             if call.method == "showShare",
                let args = call.arguments as? [String: Any] {
-                let id         = args["id"]         as? String ?? ""
-                let text       = args["text"]       as? String ?? ""
-                let deviceName = args["deviceName"] as? String ?? "Android"
-                self?.showShare(id: id, text: text, deviceName: deviceName)
+                let id          = args["id"]          as? String ?? ""
+                let text        = args["text"]        as? String ?? ""
+                let imageBase64 = args["imageBase64"] as? String
+                let deviceName  = args["deviceName"]  as? String ?? "Android"
+                self?.showShare(id: id, text: text, imageBase64: imageBase64, deviceName: deviceName)
                 result(nil)
             } else {
                 result(FlutterMethodNotImplemented)
@@ -52,18 +54,19 @@ class ClipboardPanelController {
 
     // MARK: - Public API
 
-    func showShare(id: String, text: String, deviceName: String) {
+    func showShare(id: String, text: String, imageBase64: String?, deviceName: String) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
 
             // Deduplicate: same id → silently ignore
             if id == self.currentId { return }
 
-            self.currentId = id
-            self.fullText  = text    // stored untruncated for Copy
+            self.currentId       = id
+            self.fullText        = text    // stored untruncated for Copy
+            self.fullImageBase64 = imageBase64
 
             self.createPanelIfNeeded()
-            self.updateContent(deviceName: deviceName, text: text)
+            self.updateContent(deviceName: deviceName, text: text, hasImage: imageBase64 != nil)
 
             // Cancel any pending auto-dismiss (from previous Copy action)
             self.dismissWorkItem?.cancel()
@@ -201,12 +204,16 @@ class ClipboardPanelController {
         ))
     }
 
-    private func updateContent(deviceName: String, text: String) {
+    private func updateContent(deviceName: String, text: String, hasImage: Bool) {
         deviceLabel.stringValue  = "📱 \(deviceName)"
-        // Preview truncated to 80 chars for display. fullText is always complete.
-        let preview = text.count > 80 ? String(text.prefix(80)) + "…" : text
-        // Collapse newlines for single-line preview
-        previewLabel.stringValue = preview.components(separatedBy: .newlines).first ?? preview
+        if hasImage {
+            previewLabel.stringValue = "🖼️ Image"
+        } else {
+            // Preview truncated to 80 chars for display. fullText is always complete.
+            let preview = text.count > 80 ? String(text.prefix(80)) + "…" : text
+            // Collapse newlines for single-line preview
+            previewLabel.stringValue = preview.components(separatedBy: .newlines).first ?? preview
+        }
         copyButton.title         = "Copy"
         copyButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
     }
@@ -214,9 +221,15 @@ class ClipboardPanelController {
     // MARK: - Actions
 
     @objc private func copyClicked() {
-        // Copy the full, untruncated text to the macOS clipboard.
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(fullText, forType: .string)
+        
+        if let base64 = fullImageBase64, let data = Data(base64Encoded: base64) {
+            // Copy image data to the macOS clipboard.
+            NSPasteboard.general.setData(data, forType: .png)
+        } else {
+            // Copy the full, untruncated text to the macOS clipboard.
+            NSPasteboard.general.setString(fullText, forType: .string)
+        }
 
         // Show "✓ Copied" confirmation state.
         copyButton.title = "✓ Copied"

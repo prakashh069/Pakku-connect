@@ -3,24 +3,24 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:paddingStart="4dp"
-    android:paddingEnd="4dp"
-    android:paddingTop="4dp"
-    android:paddingBottom="4dp"
+    android:paddingStart="16dp"
+    android:paddingEnd="8dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
     android:gravity="center_vertical">
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="4dp"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:gravity="center_vertical">
 
         <TextView
             android:id="@+id/title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Pakku Connect"
+            android:text="Connected to Mac"
             android:textStyle="bold"
             android:textColor="?android:attr/textColorPrimary"
             android:textSize="14sp"
@@ -30,7 +30,7 @@
             android:id="@+id/text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Connected to Mac"
+            android:text="Ready to sync clipboard"
             android:textColor="?android:attr/textColorSecondary"
             android:textSize="12sp"
             android:singleLine="true" />
@@ -39,7 +39,7 @@
     <Button
         android:id="@+id/btn_send"
         android:layout_width="wrap_content"
-        android:layout_height="40dp"
+        android:layout_height="36dp"
         android:text="SEND TO MAC"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:textColor="#1976D2"

@@ -453,9 +453,8 @@ class HomeScreen extends StatelessWidget {
               if (Platform.isMacOS) {
                 if (context.mounted) {
                   ws.send({'type': 'unpair'});
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    ws.disconnect();
-                  });
+                  await Future.delayed(const Duration(milliseconds: 500));
+                  ws.disconnect();
                 }
               } else {
                 const platform = MethodChannel('com.pakku.connect/platform');

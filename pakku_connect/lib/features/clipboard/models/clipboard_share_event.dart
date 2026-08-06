@@ -6,7 +6,10 @@ class ClipboardShareEvent {
   final String id;
 
   /// Full, untruncated clipboard text. Never truncate before passing to the coordinator.
-  final String text;
+  final String? text;
+
+  /// Base64 encoded image data if the clipboard is an image.
+  final String? imageBase64;
 
   /// Human-readable source device name (e.g. "Pixel 8").
   final String deviceName;
@@ -16,7 +19,8 @@ class ClipboardShareEvent {
 
   const ClipboardShareEvent({
     required this.id,
-    required this.text,
+    this.text,
+    this.imageBase64,
     required this.deviceName,
     required this.timestamp,
   });

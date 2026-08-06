@@ -12,7 +12,7 @@ import 'dart:io' show Platform;
 class ClipboardWatcher with WidgetsBindingObserver {
   Timer? _timer;
   String? _lastClipboardContent;
-  final void Function(String content) onClipboardChanged;
+  final void Function(String text, String? imageBase64) onClipboardChanged;
   bool _isRunning = false;
 
   ClipboardWatcher({required this.onClipboardChanged});
@@ -23,17 +23,42 @@ class ClipboardWatcher with WidgetsBindingObserver {
     if (_isRunning) return;
     debugPrint('ClipboardWatcher started');
     _isRunning = true;
-    WidgetsBinding.instance.addObserver(this);
-    // Start polling immediately — app is likely already in foreground when start() is called.
-    _startTimer();
+    
+    if (Platform.isMacOS) {
+      const channel = MethodChannel('com.pakku.connect/macClipboard');
+      channel.setMethodCallHandler((call) async {
+        if (call.method == 'clipboardTextChanged') {
+          final text = call.arguments as String?;
+          if (text != null) {
+            onClipboardChanged(text, null);
+          }
+        } else if (call.method == 'clipboardImageChanged') {
+          final base64 = call.arguments as String?;
+          if (base64 != null) {
+            onClipboardChanged('', base64);
+          }
+        }
+      });
+      channel.invokeMethod('startWatching');
+    } else {
+      WidgetsBinding.instance.addObserver(this);
+      _startTimer();
+    }
   }
 
   /// Disables the watcher. Cancels the timer and unregisters the observer.
   void stop() {
     if (!_isRunning) return;
     _isRunning = false;
-    WidgetsBinding.instance.removeObserver(this);
-    _cancelTimer();
+    
+    if (Platform.isMacOS) {
+      const channel = MethodChannel('com.pakku.connect/macClipboard');
+      channel.invokeMethod('stopWatching');
+      channel.setMethodCallHandler(null);
+    } else {
+      WidgetsBinding.instance.removeObserver(this);
+      _cancelTimer();
+    }
   }
 
   void dispose() {
@@ -79,12 +104,12 @@ class ClipboardWatcher with WidgetsBindingObserver {
 
       if (text.isNotEmpty && text != _lastClipboardContent) {
         _lastClipboardContent = text;
-        onClipboardChanged(text);
+        onClipboardChanged(text, null);
       } else if (text.isEmpty &&
           _lastClipboardContent != null &&
           _lastClipboardContent!.isNotEmpty) {
         _lastClipboardContent = text;
-        onClipboardChanged(text);
+        onClipboardChanged(text, null);
       }
     } catch (e) {
       // Ignore platform exceptions (e.g., clipboard denied when backgrounded on Android).

@@ -32,6 +32,7 @@ class ClipboardShareCoordinator {
     _channel.invokeMethod('showShare', {
       'id': event.id,
       'text': event.text,
+      'imageBase64': event.imageBase64,
       'deviceName': event.deviceName,
     }).catchError((_) {
       // Channel errors are non-fatal. Best-effort only.

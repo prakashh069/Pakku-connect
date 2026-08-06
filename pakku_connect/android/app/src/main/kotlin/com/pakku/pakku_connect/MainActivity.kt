@@ -135,6 +135,9 @@ class MainActivity : FlutterActivity() {
                         }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                            permissionsToRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
+                        } else {
+                            permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
                         }
 
                         val ungranted = permissionsToRequest.filter {
