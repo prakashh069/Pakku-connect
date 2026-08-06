@@ -69,6 +69,13 @@ class ClipboardPanelController {
             self.dismissWorkItem?.cancel()
             self.dismissWorkItem = nil
 
+            // Schedule auto-dismiss for 5 seconds
+            let work = DispatchWorkItem { [weak self] in
+                self?.dismissPanel()
+            }
+            self.dismissWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
+
             guard let p = self.panel else { return }
 
             if p.isVisible {

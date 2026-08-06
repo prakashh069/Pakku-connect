@@ -16,6 +16,7 @@ import android.os.Looper
 import android.telecom.TelecomManager
 import android.provider.ContactsContract
 import android.telephony.TelephonyManager
+import android.widget.RemoteViews
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.util.Log
@@ -124,12 +125,16 @@ class PhoneStateService : Service() {
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
+        val remoteViews = RemoteViews(packageName, R.layout.notification_persistent)
+        remoteViews.setOnClickPendingIntent(R.id.btn_send, pendingSendIntent)
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle("Pakku Connect")
             .setContentText("Connected to Mac")
-            .setSmallIcon(android.R.drawable.ic_menu_call)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .addAction(android.R.drawable.ic_menu_send, "Send to Mac", pendingSendIntent)
+            .setCustomContentView(remoteViews)
+            .setCustomBigContentView(remoteViews)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .build()
         startForeground(1, notification)
 
@@ -779,7 +784,7 @@ class PhoneStateService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, "Call Service", NotificationManager.IMPORTANCE_DEFAULT)
+                CHANNEL_ID, "Call Service", NotificationManager.IMPORTANCE_HIGH)
             getSystemService(NotificationManager::class.java)
                 .createNotificationChannel(channel)
         }
@@ -787,7 +792,7 @@ class PhoneStateService : Service() {
 
     companion object {
         private const val TAG = "PhoneStateService"
-        private const val CHANNEL_ID = "PhoneStateServiceChannel_v2"
+        private const val CHANNEL_ID = "PhoneStateServiceChannel_v3"
         @Volatile
         var latestScreenedNumber: String? = null
         val running = AtomicBoolean(false)
