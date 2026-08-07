@@ -1,42 +1,36 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/services.dart';
-import '../models/clipboard_share_event.dart';
+import '../../share/handlers/share_handler_registry.dart';
+import '../../share/models/share_event.dart';
 
 /// Subscribes to the [ClipboardSyncManager.inboundShares] stream and
-/// coordinates popup presentation via the native macOS layer.
+/// delegates each [ShareEvent] to the [ShareHandlerRegistry].
 ///
 /// Responsibilities:
 ///   - Subscribe to the inbound event stream
-///   - Forward validated events to the native popup via MethodChannel
-///   - Handle channel errors gracefully (best-effort; no retry)
+///   - Delegate events to the appropriate handler via [ShareHandlerRegistry]
+///   - Manage the subscription lifecycle
 ///
-/// This class has no clipboard business logic — that lives in [ClipboardSyncManager].
+/// This class has no business logic — routing is owned by [ShareHandlerRegistry],
+/// and all MIME-specific processing is owned by individual handlers.
 /// It is macOS-only in practice (attach() is a no-op on other platforms).
 class ClipboardShareCoordinator {
-  static const MethodChannel _channel =
-      MethodChannel('com.pakku.connect/clipboardShare');
+  final ShareHandlerRegistry _registry;
+  StreamSubscription<ShareEvent>? _sub;
 
-  StreamSubscription<ClipboardShareEvent>? _sub;
+  ClipboardShareCoordinator()
+      : _registry = ShareHandlerRegistry.withDefaults();
 
-  /// Attaches this coordinator to the given stream.
+  /// Attaches this coordinator to the given [ShareEvent] stream.
   /// Calling attach() a second time cancels the previous subscription first.
-  void attach(Stream<ClipboardShareEvent> stream) {
+  void attach(Stream<ShareEvent> stream) {
     _sub?.cancel();
     if (!Platform.isMacOS) return;
     _sub = stream.listen(_onEvent);
   }
 
-  void _onEvent(ClipboardShareEvent event) {
-    // text is passed in full — truncation is the popup's responsibility for display only.
-    _channel.invokeMethod('showShare', {
-      'id': event.id,
-      'text': event.text,
-      'imageBase64': event.imageBase64,
-      'deviceName': event.deviceName,
-    }).catchError((_) {
-      // Channel errors are non-fatal. Best-effort only.
-    });
+  Future<void> _onEvent(ShareEvent event) async {
+    await _registry.dispatch(event);
   }
 
   void dispose() {

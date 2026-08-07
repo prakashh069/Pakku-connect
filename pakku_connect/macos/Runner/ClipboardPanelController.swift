@@ -1,17 +1,27 @@
 import Cocoa
 import FlutterMacOS
 
-/// Presents clipboard share notifications as a lightweight floating panel.
+/// Presents share notifications as a lightweight floating panel.
 ///
 /// Completely standalone — does not extend or modify CallPanelController.
-/// Visually matches Pakku's existing call panel design.
 ///
 /// Behaviour:
 /// - New id while panel hidden: show panel with slide-up + fade-in
 /// - New id while panel visible: replace content, skip animation (newest wins)
 /// - Same id arrives: silently ignored
-/// - Copy: writes full text to NSPasteboard, shows "✓ Copied", fades after 1.2s
-/// - Dismiss: fade-out + slide-up
+/// - Copy button is disabled until background Base64 decoding finishes
+/// - Copy: writes pre-decoded Data to NSPasteboard instantly (no decode on click)
+/// - Dismiss: fade-out + slide-up; decoded data is released from memory
+///
+/// Thread contract:
+/// - Base64 decoding runs on DispatchQueue.global (background)
+/// - All AppKit/UI updates run on DispatchQueue.main
+/// - NSImage creation is lazy: Data alone is used for pasteboard;
+///   NSImage is only created if a preview thumbnail is needed
+///
+/// Memory contract:
+/// - Decoded image Data is released when the popup is dismissed or replaced,
+///   preventing multi-MB payloads from accumulating in memory.
 class ClipboardPanelController {
     static let shared = ClipboardPanelController()
 
@@ -26,9 +36,14 @@ class ClipboardPanelController {
 
     // State
     private var currentId: String?
-    private var fullText: String = ""
-    private var fullImageBase64: String? = nil
     private var dismissWorkItem: DispatchWorkItem?
+
+    /// Pre-decoded payload ready for pasteboard. nil until decode completes.
+    private var decodedData: Data?
+    /// Plain text payload for text/plain shares.
+    private var plainText: String?
+    /// Current share MIME type.
+    private var currentMime: String?
 
     private init() {}
 
@@ -40,11 +55,11 @@ class ClipboardPanelController {
         methodChannel?.setMethodCallHandler { [weak self] (call, result) in
             if call.method == "showShare",
                let args = call.arguments as? [String: Any] {
-                let id          = args["id"]          as? String ?? ""
-                let text        = args["text"]        as? String ?? ""
-                let imageBase64 = args["imageBase64"] as? String
-                let deviceName  = args["deviceName"]  as? String ?? "Android"
-                self?.showShare(id: id, text: text, imageBase64: imageBase64, deviceName: deviceName)
+                let id         = args["id"]         as? String ?? ""
+                let mime       = args["mime"]       as? String ?? ""
+                let deviceName = args["deviceName"] as? String ?? "Android"
+                let content    = args["content"]    as? [String: Any] ?? [:]
+                self?.showShare(id: id, mime: mime, deviceName: deviceName, content: content)
                 result(nil)
             } else {
                 result(FlutterMethodNotImplemented)
@@ -54,37 +69,69 @@ class ClipboardPanelController {
 
     // MARK: - Public API
 
-    func showShare(id: String, text: String, imageBase64: String?, deviceName: String) {
+    func showShare(id: String, mime: String, deviceName: String, content: [String: Any]) {
+        // All state updates and UI changes run on main thread.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
 
             // Deduplicate: same id → silently ignore
             if id == self.currentId { return }
 
-            self.currentId       = id
-            self.fullText        = text    // stored untruncated for Copy
-            self.fullImageBase64 = imageBase64
+            // Release previous payload from memory immediately (memory contract).
+            self.decodedData = nil
+            self.plainText   = nil
+            self.currentMime = mime.lowercased()
+            self.currentId   = id
 
             self.createPanelIfNeeded()
-            self.updateContent(deviceName: deviceName, text: text, hasImage: imageBase64 != nil)
 
-            // Cancel any pending auto-dismiss (from previous Copy action)
+            // Disable Copy until decode finishes.
+            self.copyButton.isEnabled = false
+            self.copyButton.alphaValue = 0.5
+
+            let encoding = content["encoding"] as? String ?? ""
+            let body     = content["body"]     as? String ?? ""
+            let metadata = content["metadata"] as? [String: Any]
+
+            // Build preview info from metadata (advisory only — fallback gracefully).
+            let displayName = metadata?["displayName"] as? String
+            let width       = metadata?["width"]       as? Int
+            let height      = metadata?["height"]      as? Int
+            let sizeBytes   = metadata?["sizeBytes"]   as? Int
+
+            self.updateContent(
+                deviceName:  deviceName,
+                mime:        mime,
+                displayName: displayName,
+                width:       width,
+                height:      height,
+                sizeBytes:   sizeBytes,
+                body:        body
+            )
+
+            // Cancel any pending auto-dismiss.
             self.dismissWorkItem?.cancel()
             self.dismissWorkItem = nil
 
-            // Schedule auto-dismiss for 5 seconds
+            // Schedule auto-dismiss for 5 seconds.
             let work = DispatchWorkItem { [weak self] in
                 self?.dismissPanel()
             }
             self.dismissWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
 
-            guard let p = self.panel else { return }
-
-            if p.isVisible {
-                // Panel already visible — replace content, skip animation (rate limiting)
-                return
+            // Kick off background decode.
+            if encoding == "base64" && !body.isEmpty {
+                self.decodeBase64InBackground(body: body)
+            } else if encoding == "utf-8" {
+                // Plain text — no decode needed; enable Copy immediately.
+                self.plainText = body
+                self.setCopyEnabled(true)
             }
+
+            // Animate panel in (if not already visible).
+            guard let p = self.panel else { return }
+            if p.isVisible { return }
 
             self.positionPanel()
             p.alphaValue = 0.0
@@ -102,13 +149,41 @@ class ClipboardPanelController {
         }
     }
 
+    // MARK: - Background Decode
+
+    private func decodeBase64InBackground(body: String) {
+        // Capture the id at dispatch time to guard against stale decodes.
+        let capturedId = self.currentId
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+
+            // Decode off the UI thread.
+            guard let data = Data(base64Encoded: body, options: .ignoreUnknownCharacters) else {
+                // Decode failure → drop silently per failure contract.
+                return
+            }
+
+            // Hop back to main thread to update state and UI.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+
+                // Guard: if a newer share arrived while decoding, discard this result.
+                guard self.currentId == capturedId else { return }
+
+                self.decodedData = data
+                self.setCopyEnabled(true)
+            }
+        }
+    }
+
     // MARK: - Panel Construction
 
     private func createPanelIfNeeded() {
         if panel != nil { return }
 
         let width: CGFloat  = 340
-        let height: CGFloat = 76
+        let height: CGFloat = 96
         let rect = NSRect(x: 0, y: 0, width: width, height: height)
 
         let p = NSPanel(
@@ -117,58 +192,52 @@ class ClipboardPanelController {
             backing: .buffered,
             defer: false
         )
-        p.level                 = .floating
-        p.collectionBehavior    = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        p.hidesOnDeactivate     = false
-        p.isOpaque              = false
-        p.backgroundColor       = .clear
-        p.hasShadow             = true
+        p.level               = .floating
+        p.collectionBehavior  = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        p.hidesOnDeactivate   = false
+        p.isOpaque            = false
+        p.backgroundColor     = .clear
+        p.hasShadow           = true
 
         let visualEffect = NSVisualEffectView(frame: rect)
         visualEffect.material       = .hudWindow
         visualEffect.blendingMode   = .behindWindow
         visualEffect.state          = .active
         visualEffect.wantsLayer     = true
-        visualEffect.layer?.cornerRadius    = 16
-        visualEffect.layer?.masksToBounds   = true
+        visualEffect.layer?.cornerRadius  = 16
+        visualEffect.layer?.masksToBounds = true
 
-        // Clipboard icon
-        let iconView = NSTextField(labelWithString: "")
+        // Icon
         if #available(macOS 11.0, *) {
-            let iconImg = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
-            let imageView = NSImageView(frame: NSRect(x: 16, y: 22, width: 32, height: 32))
-            imageView.image          = iconImg
-            imageView.imageScaling   = .scaleProportionallyUpOrDown
-            if #available(macOS 11.0, *) {
-                imageView.contentTintColor = NSColor.white.withAlphaComponent(0.85)
-            }
+            let iconImg   = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
+            let imageView = NSImageView(frame: NSRect(x: 16, y: 30, width: 32, height: 32))
+            imageView.image        = iconImg
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            imageView.contentTintColor = .labelColor
             visualEffect.addSubview(imageView)
-        } else {
-            iconView.stringValue    = "📋"
-            iconView.font           = NSFont.systemFont(ofSize: 22)
-            iconView.frame          = NSRect(x: 14, y: 24, width: 36, height: 30)
-            visualEffect.addSubview(iconView)
         }
 
         // Device label (e.g. "📱 Pixel 8")
         deviceLabel = NSTextField(labelWithString: "")
-        deviceLabel.font        = NSFont.systemFont(ofSize: 13, weight: .semibold)
-        deviceLabel.textColor   = .white
-        deviceLabel.frame       = NSRect(x: 58, y: 42, width: 188, height: 18)
+        deviceLabel.font      = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        deviceLabel.textColor = .labelColor
+        deviceLabel.frame     = NSRect(x: 58, y: 60, width: 188, height: 18)
         visualEffect.addSubview(deviceLabel)
 
-        // Preview label (truncated display only)
+        // Preview label — two lines of detail
         previewLabel = NSTextField(labelWithString: "")
-        previewLabel.font       = NSFont.systemFont(ofSize: 12, weight: .regular)
-        previewLabel.textColor  = NSColor.white.withAlphaComponent(0.75)
-        previewLabel.frame      = NSRect(x: 58, y: 22, width: 188, height: 18)
+        previewLabel.font      = NSFont.systemFont(ofSize: 11, weight: .regular)
+        previewLabel.textColor = .secondaryLabelColor
+        previewLabel.frame     = NSRect(x: 58, y: 28, width: 188, height: 32)
+        previewLabel.maximumNumberOfLines = 2
+        previewLabel.lineBreakMode        = .byTruncatingTail
         visualEffect.addSubview(previewLabel)
 
-        // Copy button
-        let btnWidth:  CGFloat = 64
-        let btnHeight: CGFloat = 26
+        let btnWidth: CGFloat    = 64
+        let btnHeight: CGFloat   = 26
         let rightMargin: CGFloat = 14
 
+        // Copy button (disabled until decode finishes)
         copyButton = NSButton(title: "Copy", target: self, action: #selector(copyClicked))
         copyButton.isBordered   = false
         copyButton.wantsLayer   = true
@@ -176,7 +245,9 @@ class ClipboardPanelController {
         copyButton.layer?.cornerRadius    = 6
         copyButton.font         = NSFont.systemFont(ofSize: 12, weight: .medium)
         copyButton.contentTintColor = .white
-        copyButton.frame = NSRect(x: width - rightMargin - btnWidth, y: 41, width: btnWidth, height: btnHeight)
+        copyButton.isEnabled    = false
+        copyButton.alphaValue   = 0.5
+        copyButton.frame = NSRect(x: width - rightMargin - btnWidth, y: 57, width: btnWidth, height: btnHeight)
         visualEffect.addSubview(copyButton)
 
         // Dismiss button
@@ -187,7 +258,7 @@ class ClipboardPanelController {
         dismissButton.layer?.cornerRadius    = 6
         dismissButton.font         = NSFont.systemFont(ofSize: 12, weight: .regular)
         dismissButton.contentTintColor = NSColor.white.withAlphaComponent(0.85)
-        dismissButton.frame = NSRect(x: width - rightMargin - btnWidth, y: 9, width: btnWidth, height: btnHeight)
+        dismissButton.frame = NSRect(x: width - rightMargin - btnWidth, y: 25, width: btnWidth, height: btnHeight)
         visualEffect.addSubview(dismissButton)
 
         p.contentView = visualEffect
@@ -204,17 +275,45 @@ class ClipboardPanelController {
         ))
     }
 
-    private func updateContent(deviceName: String, text: String, hasImage: Bool) {
-        deviceLabel.stringValue  = "📱 \(deviceName)"
-        if hasImage {
-            previewLabel.stringValue = "🖼️ Image"
+    private func setCopyEnabled(_ enabled: Bool) {
+        copyButton.isEnabled  = enabled
+        copyButton.alphaValue = enabled ? 1.0 : 0.5
+    }
+
+    private func updateContent(deviceName: String, mime: String,
+                               displayName: String?, width: Int?,
+                               height: Int?, sizeBytes: Int?, body: String) {
+        deviceLabel.stringValue = "📱 \(deviceName)"
+
+        let mimeUpper = mime.lowercased()
+
+        if mimeUpper == "text/plain" {
+            let previewText = body.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ")
+            previewLabel.stringValue = previewText.count > 60 ? String(previewText.prefix(60)) + "..." : previewText
+        } else if mimeUpper.hasPrefix("image/") {
+            // Format: "Screenshot\n1080 × 2400  PNG • 2.3 MB"
+            let name      = displayName ?? "Image"
+            let ext       = mime.components(separatedBy: "/").last?.uppercased() ?? "IMAGE"
+            var details   = ext
+
+            if let sizeBytes {
+                let sizeMB = Double(sizeBytes) / 1_048_576
+                details += " • \(String(format: "%.1f", sizeMB)) MB"
+            }
+
+            var line2 = ""
+            if let w = width, let h = height {
+                line2 = "\(w) × \(h)  \(details)"
+            } else {
+                line2 = details
+            }
+
+            previewLabel.stringValue = "\(name)\n\(line2)"
         } else {
-            // Preview truncated to 80 chars for display. fullText is always complete.
-            let preview = text.count > 80 ? String(text.prefix(80)) + "…" : text
-            // Collapse newlines for single-line preview
-            previewLabel.stringValue = preview.components(separatedBy: .newlines).first ?? preview
+            previewLabel.stringValue = mime
         }
-        copyButton.title         = "Copy"
+
+        copyButton.title = "Copy"
         copyButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
     }
 
@@ -222,20 +321,20 @@ class ClipboardPanelController {
 
     @objc private func copyClicked() {
         NSPasteboard.general.clearContents()
-        
-        if let base64 = fullImageBase64, let data = Data(base64Encoded: base64) {
-            // Copy image data to the macOS clipboard.
-            NSPasteboard.general.setData(data, forType: .png)
-        } else {
-            // Copy the full, untruncated text to the macOS clipboard.
-            NSPasteboard.general.setString(fullText, forType: .string)
+
+        // Copy uses pre-decoded Data only — never decodes Base64 again.
+        if let mime = currentMime, mime.hasPrefix("image/"), let data = decodedData {
+            let pasteboardType: NSPasteboard.PasteboardType = mime.contains("jpeg")
+                ? .init("public.jpeg")
+                : .png
+            NSPasteboard.general.setData(data, forType: pasteboardType)
+        } else if let text = plainText {
+            NSPasteboard.general.setString(text, forType: .string)
         }
 
-        // Show "✓ Copied" confirmation state.
         copyButton.title = "✓ Copied"
         copyButton.layer?.backgroundColor = NSColor.systemTeal.cgColor
 
-        // Auto-dismiss after 1.2 s.
         let work = DispatchWorkItem { [weak self] in
             self?.dismissPanel()
         }
@@ -262,8 +361,11 @@ class ClipboardPanelController {
                 p.animator().setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
             }, completionHandler: {
                 p.orderOut(nil)
-                // Reset so next show uses fresh animation
-                self.currentId = nil
+                // Release memory and reset state (memory contract).
+                self.currentId   = nil
+                self.decodedData = nil
+                self.plainText   = nil
+                self.currentMime = nil
             })
         }
     }

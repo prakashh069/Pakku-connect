@@ -61,6 +61,30 @@ class PhoneStateService : Service() {
         running.set(true)
         createNotificationChannel()
         startNetworkMonitoring()
+        cleanupStaleShareCache()
+    }
+
+    /**
+     * Deletes stale files in the dedicated Pakku share cache directory
+     * (cacheDir/pakku_share/) that are older than 24 hours.
+     *
+     * This is a safety-net only. Files should be deleted immediately after
+     * a successful send. Only files Pakku created (in pakku_share/) are touched.
+     */
+    private fun cleanupStaleShareCache() {
+        try {
+            val shareDir = java.io.File(cacheDir, "pakku_share")
+            if (!shareDir.exists()) return
+            val cutoff = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+            shareDir.listFiles()?.forEach { file ->
+                if (file.lastModified() < cutoff) {
+                    file.delete()
+                    Log.d(TAG, "Deleted stale share cache file: ${file.name}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clean share cache", e)
+        }
     }
 
     private fun startNetworkMonitoring() {
@@ -407,25 +431,43 @@ class PhoneStateService : Service() {
                             }
                         }
                         "share.clipboard" -> {
-                            val payloadObj = json.optJSONObject("payload")
-                            val clipboardText = payloadObj?.optString("text")
-                            val imageBase64 = payloadObj?.optString("imageBase64")
-                            val deviceName = payloadObj?.optString("deviceName") ?: "Mac"
-                            
+                            // Failure contract: drop silently on any parsing error.
+                            val schemaVersion = json.optInt("schemaVersion", -1)
+                            if (schemaVersion != 1) return
+
+                            val payloadObj  = json.optJSONObject("payload") ?: return
+                            val contentObj  = payloadObj.optJSONObject("content") ?: return
+                            val mime        = payloadObj.optString("mime").takeIf { it.isNotEmpty() } ?: return
+                            val encoding    = contentObj.optString("encoding").takeIf { it.isNotEmpty() } ?: return
+                            val body        = contentObj.optString("body").takeIf { it.isNotEmpty() } ?: return
+                            val deviceName  = payloadObj.optString("deviceName").takeIf { it.isNotEmpty() } ?: "Mac"
+
+                            val clipboardText: String? = if (encoding == "utf-8") body else null
+
                             var savedImagePath: String? = null
-                            if (!imageBase64.isNullOrEmpty()) {
+                            if (encoding == "base64" && mime.startsWith("image/")) {
+                                // Payload size guard (5 MB on encoded payload).
+                                if (body.length > 5 * 1024 * 1024) {
+                                    Log.w(TAG, "Inbound image payload exceeds 5 MB limit — dropped.")
+                                    return
+                                }
                                 try {
-                                    val imageBytes = android.util.Base64.decode(imageBase64, android.util.Base64.DEFAULT)
-                                    val cacheFile = java.io.File(cacheDir, "received_image.png")
-                                    val outputStream = java.io.FileOutputStream(cacheFile)
-                                    outputStream.write(imageBytes)
-                                    outputStream.close()
+                                    val imageBytes = android.util.Base64.decode(body, android.util.Base64.DEFAULT)
+                                    val shareDir   = java.io.File(cacheDir, "pakku_share").also { it.mkdirs() }
+                                    shareDir.listFiles()?.forEach { file ->
+                                        if (System.currentTimeMillis() - file.lastModified() > 3600000) {
+                                            file.delete()
+                                        }
+                                    }
+                                    val cacheFile  = java.io.File(shareDir, "recv_${System.currentTimeMillis()}.png")
+                                    java.io.FileOutputStream(cacheFile).use { it.write(imageBytes) }
                                     savedImagePath = cacheFile.absolutePath
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to decode/save received image", e)
+                                    Log.e(TAG, "Failed to decode/save received image — dropped", e)
+                                    return
                                 }
                             }
-                            
+
                             if (!clipboardText.isNullOrEmpty() || savedImagePath != null) {
                                 if (MainActivity.isAppInForeground) {
                                     android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -443,20 +485,17 @@ class PhoneStateService : Service() {
                                                 snippet = if (clipboardText != null && clipboardText.length > 30) clipboardText.substring(0, 27) + "..." else (clipboardText ?: "")
                                             }
                                             clipboard.setPrimaryClip(clip)
-                                            
                                             android.widget.Toast.makeText(this@PhoneStateService, "Copied from $deviceName\n$snippet", android.widget.Toast.LENGTH_SHORT).show()
                                         } catch (e: Exception) {
                                             Log.e(TAG, "Foreground copy failed", e)
                                         }
-                                    }, 200) // Delay 200ms to allow Flutter to process the broadcast first
+                                    }, 200)
                                 } else {
                                     if (android.provider.Settings.canDrawOverlays(this@PhoneStateService)) {
                                         val intent = Intent(this@PhoneStateService, ClipboardWriterActivity::class.java).apply {
                                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
                                             putExtra("clipboard_text", clipboardText)
-                                            if (savedImagePath != null) {
-                                                putExtra("image_path", savedImagePath)
-                                            }
+                                            if (savedImagePath != null) putExtra("image_path", savedImagePath)
                                             putExtra("device_name", deviceName)
                                         }
                                         startActivity(intent)
@@ -465,16 +504,31 @@ class PhoneStateService : Service() {
                                     }
                                 }
                             }
-                            
-                            // Always forward to Flutter so ClipboardSyncManager can track _lastReceivedText for deduplication
+
+                            // Forward raw message to Flutter for deduplication tracking.
+                            var payloadToBroadcast = text
+                            if (encoding == "base64" && mime.startsWith("image/")) {
+                                try {
+                                    val newJson = org.json.JSONObject(text)
+                                    val payload = newJson.optJSONObject("payload")
+                                    val content = payload?.optJSONObject("content")
+                                    if (content != null) {
+                                        content.put("body", "") // Strip large body to avoid TransactionTooLargeException
+                                        payloadToBroadcast = newJson.toString()
+                                    }
+                                } catch (e: Exception) {}
+                            }
+
                             val broadcastIntent = Intent("com.pakku.pakku_connect.WS_MESSAGE")
                             broadcastIntent.setPackage(packageName)
-                            broadcastIntent.putExtra("payload", text)
+                            broadcastIntent.putExtra("payload", payloadToBroadcast)
                             sendBroadcast(broadcastIntent)
-                            
-                            // Persist it natively in case Flutter is dead and misses the broadcast
-                            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                            prefs.edit().putString("flutter.lastReceivedClipboardText", clipboardText).apply()
+
+                            // Persist last received text natively as a fallback.
+                            if (!clipboardText.isNullOrEmpty()) {
+                                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                                prefs.edit().putString("flutter.lastReceivedClipboardText", clipboardText).apply()
+                            }
                         }
                         else -> {
                             val broadcastIntent = Intent("com.pakku.pakku_connect.WS_MESSAGE")
@@ -687,50 +741,118 @@ class PhoneStateService : Service() {
 
             val clipReceiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
-                    if (intent?.action == "com.pakku.pakku_connect.ACTION_SEND_TO_MAC") {
-                        val text = intent.getStringExtra("text")
-                        val imagePath = intent.getStringExtra("imagePath")
-                        
-                        if (!text.isNullOrEmpty() || !imagePath.isNullOrEmpty()) {
-                            var base64Image: String? = null
-                            if (!imagePath.isNullOrEmpty()) {
-                                try {
-                                    val bitmap = android.graphics.BitmapFactory.decodeFile(imagePath)
-                                    if (bitmap != null) {
-                                        val outputStream = java.io.ByteArrayOutputStream()
-                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, outputStream)
-                                        val byteArray = outputStream.toByteArray()
-                                        base64Image = android.util.Base64.encodeToString(byteArray, android.util.Base64.NO_WRAP)
-                                        
-                                        // Cleanup temporary file
-                                        java.io.File(imagePath).delete()
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to encode image", e)
-                                }
-                            }
+                    if (intent?.action != "com.pakku.pakku_connect.ACTION_SEND_TO_MAC") return
+                    val text      = intent.getStringExtra("text")
+                    val imagePath = intent.getStringExtra("imagePath")
+                    if (text.isNullOrEmpty() && imagePath.isNullOrEmpty()) return
 
-                            val payload = JSONObject().apply {
-                                put("schemaVersion", 1)
-                                put("type", "share.clipboard")
-                                put("timestamp", System.currentTimeMillis())
-                                put("payload", JSONObject().apply {
-                                    if (!text.isNullOrEmpty()) {
-                                        put("text", text)
-                                        put("mime", "text/plain")
+                    // Run image processing on a background thread so the
+                    // broadcast receiver returns immediately.
+                    Thread {
+                        var encodedBody: String? = null
+                        var mime = "text/plain"
+                        var metadata: JSONObject? = null
+
+                        if (!imagePath.isNullOrEmpty()) {
+                            val cacheFile = java.io.File(imagePath)
+                            try {
+                                // Determine MIME type. ContentResolver not available from
+                                // a broadcast receiver without a Uri, so resolve from path.
+                                // Decoding to Bitmap strips all EXIF (GPS, camera, orientation,
+                                // timestamps) from the resulting pixel buffer.
+                                val bitmap = android.graphics.BitmapFactory.decodeFile(imagePath)
+                                if (bitmap == null) {
+                                    Log.w(TAG, "Failed to decode image bitmap — dropped.")
+                                    cacheFile.delete()
+                                    return@Thread
+                                }
+
+                                val maxEncoded = 5 * 1024 * 1024 // 5 MB (encoded payload limit)
+
+                                // Try PNG first.
+                                var outStream = java.io.ByteArrayOutputStream()
+                                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, outStream)
+                                var bytes = outStream.toByteArray()
+                                var encodedSize = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP).length
+
+                                if (encodedSize <= maxEncoded) {
+                                    mime = "image/png"
+                                } else {
+                                    // Binary search JPEG quality: range 30–100, max 7 iterations.
+                                    // Target: encoded payload (Base64) size <= 5 MB.
+                                    var lo = 30; var hi = 100
+                                    var bestBytes: ByteArray? = null
+                                    var iterations = 0
+                                    while (lo <= hi && iterations < 7) {
+                                        val mid = (lo + hi) / 2
+                                        outStream = java.io.ByteArrayOutputStream()
+                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, mid, outStream)
+                                        val candidate = outStream.toByteArray()
+                                        val candidateEncoded = android.util.Base64.encodeToString(candidate, android.util.Base64.NO_WRAP).length
+                                        if (candidateEncoded <= maxEncoded) {
+                                            bestBytes = candidate
+                                            lo = mid + 1  // try higher quality
+                                        } else {
+                                            hi = mid - 1  // reduce quality
+                                        }
+                                        iterations++
                                     }
-                                    if (base64Image != null) {
-                                        put("image", base64Image)
-                                        put("mime", "image/jpeg")
+                                    if (bestBytes == null) {
+                                        Log.w(TAG, "Image too large to fit in 5 MB even at min quality — dropped.")
+                                        mainHandler.post {
+                                            android.widget.Toast.makeText(this@PhoneStateService, "Image too large to send", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                        cacheFile.delete()
+                                        return@Thread
                                     }
-                                    put("id", java.util.UUID.randomUUID().toString())
-                                    put("deviceName", android.os.Build.MODEL)
-                                })
+                                    bytes = bestBytes
+                                    mime  = "image/jpeg"
+                                }
+
+                                encodedBody = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                metadata = JSONObject().apply {
+                                    put("width",     bitmap.width)
+                                    put("height",    bitmap.height)
+                                    put("sizeBytes", bytes.size)
+                                    // displayName is optional — omit if unknown.
+                                }
+
+                                // Immediate cache cleanup after successful encoding.
+                                cacheFile.delete()
+                                Log.d(TAG, "Deleted share cache file after encode: ${cacheFile.name}")
+
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to encode image — dropped", e)
+                                cacheFile.delete()
+                                return@Thread
                             }
-                            Log.d(TAG, "SEND outbound clipboard from receiver")
-                            sendAuthenticated(payload.toString())
+                        } else if (!text.isNullOrEmpty()) {
+                            encodedBody = text
+                            mime = "text/plain"
                         }
-                    }
+
+                        if (encodedBody == null) return@Thread
+
+                        val contentObj = JSONObject().apply {
+                            put("encoding", if (mime == "text/plain") "utf-8" else "base64")
+                            put("body", encodedBody)
+                            if (metadata != null) put("metadata", metadata)
+                        }
+
+                        val payload = JSONObject().apply {
+                            put("schemaVersion", 1)
+                            put("type", "share.clipboard")
+                            put("timestamp", System.currentTimeMillis())
+                            put("payload", JSONObject().apply {
+                                put("id",         java.util.UUID.randomUUID().toString())
+                                put("mime",       mime)
+                                put("deviceName", android.os.Build.MODEL)
+                                put("content",    contentObj)
+                            })
+                        }
+                        Log.d(TAG, "SEND outbound share (mime=$mime)")
+                        sendAuthenticated(payload.toString())
+                    }.start()
                 }
             }
             clipboardReceiver = clipReceiver

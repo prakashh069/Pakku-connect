@@ -35,18 +35,7 @@ class ClipboardWriterActivity : Activity() {
                 // Show a brief toast
                 Toast.makeText(this, "Copied from $deviceName\n$snippet", Toast.LENGTH_SHORT).show()
 
-                // Forward to Flutter so ClipboardSyncManager can track _lastReceivedText for deduplication
-                val broadcastIntent = android.content.Intent("com.pakku.pakku_connect.WS_MESSAGE")
-                broadcastIntent.setPackage(packageName)
-                val jsonPayload = org.json.JSONObject()
-                jsonPayload.put("type", "share.clipboard")
-                jsonPayload.put("schemaVersion", 1)
-                val innerPayload = org.json.JSONObject()
-                if (text != null) innerPayload.put("text", text)
-                innerPayload.put("deviceName", deviceName)
-                jsonPayload.put("payload", innerPayload)
-                broadcastIntent.putExtra("payload", jsonPayload.toString())
-                sendBroadcast(broadcastIntent)
+
 
                 // Persist it natively in case Flutter is dead and misses the broadcast
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
@@ -55,6 +44,10 @@ class ClipboardWriterActivity : Activity() {
                 // Clear the notification
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                 manager.cancel(80085)
+                
+                // Cleanup received image file
+                // Do not delete immediately as the clipboard relies on the FileProvider URI.
+                // It will be cleaned up by the 1-hour rolling cache in PhoneStateService.
             } catch (e: Exception) {
                 Toast.makeText(this, "Failed to copy: ${e.message}", Toast.LENGTH_SHORT).show()
             }

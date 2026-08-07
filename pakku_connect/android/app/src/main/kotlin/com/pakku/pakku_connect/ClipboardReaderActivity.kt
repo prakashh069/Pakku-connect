@@ -67,11 +67,14 @@ class ClipboardReaderActivity : Activity() {
         if (imageUri != null) {
             try {
                 val inputStream: InputStream? = contentResolver.openInputStream(imageUri)
-                val cacheFile = File(cacheDir, "shared_image.tmp")
-                val outputStream = FileOutputStream(cacheFile)
-                inputStream?.copyTo(outputStream)
+                // Store under pakku_share/ with a unique name so cleanup
+                // only ever targets Pakku-created files and never collides.
+                val shareDir = File(cacheDir, "pakku_share").also { it.mkdirs() }
+                val cacheFile = File(shareDir, "send_${System.currentTimeMillis()}.tmp")
+                FileOutputStream(cacheFile).use { outputStream ->
+                    inputStream?.copyTo(outputStream)
+                }
                 inputStream?.close()
-                outputStream.close()
                 savedImagePath = cacheFile.absolutePath
             } catch (e: Exception) {
                 Log.e("ClipboardReader", "Failed to read image", e)
