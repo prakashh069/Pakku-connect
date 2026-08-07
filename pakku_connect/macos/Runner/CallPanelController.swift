@@ -60,15 +60,15 @@ class CallPanelController {
                         styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
                         backing: .buffered,
                         defer: false)
-        p.level = .floating
+        p.level = .popUpMenu
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         p.hidesOnDeactivate = false
         p.isOpaque = false
         p.backgroundColor = .clear
-        p.hasShadow = true
+        p.hasShadow = false
         
         let visualEffect = NSVisualEffectView(frame: rect)
-        visualEffect.material = .hudWindow
+        visualEffect.material = .popover
         visualEffect.blendingMode = .behindWindow
         visualEffect.state = .active
         visualEffect.wantsLayer = true
@@ -79,7 +79,7 @@ class CallPanelController {
         let avatarView = NSView(frame: NSRect(x: 16, y: 13, width: 50, height: 50))
         avatarView.wantsLayer = true
         avatarView.layer?.cornerRadius = 25
-        avatarView.layer?.backgroundColor = NSColor(white: 0.5, alpha: 0.5).cgColor
+        avatarView.layer?.backgroundColor = NSColor.controlAccentColor.cgColor
         
         initialLabel = NSTextField(labelWithString: "U")
         initialLabel.font = NSFont.systemFont(ofSize: 22, weight: .medium)
@@ -91,14 +91,14 @@ class CallPanelController {
         // Name Label
         nameLabel = NSTextField(labelWithString: "Unknown")
         nameLabel.font = NSFont.systemFont(ofSize: 15, weight: .bold)
-        nameLabel.textColor = .white
+        nameLabel.textColor = .labelColor
         nameLabel.alignment = .left
         nameLabel.frame = NSRect(x: 76, y: 40, width: 170, height: 22)
         
         // Subtitle Label
         subtitleLabel = NSTextField(labelWithString: "")
         subtitleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
-        subtitleLabel.textColor = NSColor.white.withAlphaComponent(0.8)
+        subtitleLabel.textColor = .secondaryLabelColor
         subtitleLabel.alignment = .left
         subtitleLabel.frame = NSRect(x: 76, y: 20, width: 170, height: 20)
         
@@ -180,7 +180,7 @@ class CallPanelController {
                 self.subtitleLabel.stringValue = cleanNumber
                 self.acceptButton.isHidden = false
             }
-            self.subtitleLabel.textColor = NSColor.white.withAlphaComponent(0.8)
+            self.subtitleLabel.textColor = .secondaryLabelColor
             self.declineButton.isHidden = false
             
             guard let p = self.panel else { return }

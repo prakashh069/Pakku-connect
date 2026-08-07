@@ -192,15 +192,15 @@ class ClipboardPanelController {
             backing: .buffered,
             defer: false
         )
-        p.level               = .floating
+        p.level               = .popUpMenu
         p.collectionBehavior  = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         p.hidesOnDeactivate   = false
         p.isOpaque            = false
         p.backgroundColor     = .clear
-        p.hasShadow           = true
+        p.hasShadow           = false
 
         let visualEffect = NSVisualEffectView(frame: rect)
-        visualEffect.material       = .hudWindow
+        visualEffect.material       = .popover
         visualEffect.blendingMode   = .behindWindow
         visualEffect.state          = .active
         visualEffect.wantsLayer     = true
