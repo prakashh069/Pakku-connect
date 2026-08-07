@@ -14,6 +14,8 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.telecom.TelecomManager
+import android.provider.CallLog
+import android.database.ContentObserver
 import android.provider.ContactsContract
 import android.telephony.TelephonyManager
 import android.widget.RemoteViews
@@ -320,6 +322,9 @@ class PhoneStateService : Service() {
                         }
                         Log.d(TAG, "SEND device_state")
                         webSocket.send(msg.toString())
+
+                        // Initial sync
+                        syncCallHistory()
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to send initial messages: ${e.message}")
                     }
@@ -379,6 +384,9 @@ class PhoneStateService : Service() {
                         "contacts_request" -> {
                             syncContacts()
                         }
+                        "request.call_history" -> {
+                            syncCallHistory()
+                        }
                         "answer_call" -> {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                                 try {
@@ -414,6 +422,10 @@ class PhoneStateService : Service() {
                         }
                         "dial" -> {
                             val number = json.optString("number")
+                            val callId = json.optString("callId")
+                            if (callId.isNotEmpty()) {
+                                trackedCallId = callId
+                            }
                             if (number.isNotEmpty()) {
                                 try {
                                     val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
@@ -422,11 +434,22 @@ class PhoneStateService : Service() {
                                         Log.d(TAG, "Native dial executed")
                                     } else {
                                         Log.e(TAG, "Missing CALL_PHONE permission for dial")
+                                        throw SecurityException("Missing CALL_PHONE permission")
                                     }
                                 } catch (e: SecurityException) {
                                     Log.e(TAG, "Permission denied for dial", e)
+                                    sendAuthenticated("""{"type":"action_result","action":"dial","success":false,"error":"Permission denied"}""")
+                                    if (callId.isNotEmpty()) {
+                                        sendAuthenticated("""{"type":"call_state","callId":"$callId","state":"ended"}""")
+                                    }
+                                    trackedCallId = null
                                 } catch (e: Exception) {
                                     Log.e(TAG, "Failed to dial", e)
+                                    sendAuthenticated("""{"type":"action_result","action":"dial","success":false,"error":"${e.message}"}""")
+                                    if (callId.isNotEmpty()) {
+                                        sendAuthenticated("""{"type":"call_state","callId":"$callId","state":"ended"}""")
+                                    }
+                                    trackedCallId = null
                                 }
                             }
                         }
@@ -638,6 +661,84 @@ class PhoneStateService : Service() {
         }
     }
 
+    private fun syncCallHistory() {
+        Log.d(TAG, "Syncing call history...")
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "READ_CALL_LOG permission not granted. Skipping call history sync.")
+            return
+        }
+        try {
+            val callsArray = JSONArray()
+            val uri = CallLog.Calls.CONTENT_URI
+            val projection = arrayOf(
+                CallLog.Calls._ID,
+                CallLog.Calls.NUMBER,
+                CallLog.Calls.CACHED_NAME,
+                CallLog.Calls.TYPE,
+                CallLog.Calls.DATE,
+                CallLog.Calls.DURATION
+            )
+            val sortOrder = "${CallLog.Calls.DATE} DESC"
+            val cursor = contentResolver.query(uri, projection, null, null, sortOrder)
+
+            cursor?.use {
+                val idIdx = it.getColumnIndex(CallLog.Calls._ID)
+                val numberIdx = it.getColumnIndex(CallLog.Calls.NUMBER)
+                val nameIdx = it.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                val typeIdx = it.getColumnIndex(CallLog.Calls.TYPE)
+                val dateIdx = it.getColumnIndex(CallLog.Calls.DATE)
+                val durationIdx = it.getColumnIndex(CallLog.Calls.DURATION)
+
+                var count = 0
+                while (it.moveToNext() && count < 100) {
+                    count++
+                    val id = it.getString(idIdx)
+                    val number = it.getString(numberIdx) ?: ""
+                    val name = it.getString(nameIdx) ?: ""
+                    val typeInt = it.getInt(typeIdx)
+                    val date = it.getLong(dateIdx)
+                    val duration = it.getLong(durationIdx)
+
+                    val typeStr = when (typeInt) {
+                        CallLog.Calls.INCOMING_TYPE -> "incoming"
+                        CallLog.Calls.OUTGOING_TYPE -> "outgoing"
+                        CallLog.Calls.MISSED_TYPE -> "missed"
+                        CallLog.Calls.REJECTED_TYPE -> "rejected"
+                        CallLog.Calls.VOICEMAIL_TYPE -> "voicemail"
+                        CallLog.Calls.BLOCKED_TYPE -> "blocked"
+                        else -> "unknown"
+                    }
+
+                    val callObj = JSONObject().apply {
+                        put("id", id)
+                        put("name", name)
+                        put("number", number)
+                        put("type", typeStr)
+                        put("timestamp", date) // Using ms timestamp
+                        put("duration", duration)
+                    }
+                    callsArray.put(callObj)
+                }
+            }
+
+            val payloadObj = JSONObject().apply {
+                put("calls", callsArray)
+            }
+
+            val envelope = JSONObject().apply {
+                put("schemaVersion", 1)
+                put("type", "sync.call_history")
+                put("timestamp", System.currentTimeMillis() / 1000)
+                put("payload", payloadObj)
+            }
+
+            Log.d(TAG, "SEND sync.call_history")
+            sendAuthenticated(envelope.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sync call history: ${e.message}")
+        }
+    }
+
     private fun showClipboardNotification(text: String, deviceName: String, imagePath: String?) {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         val channelId = "pakku_clipboard_channel"
@@ -697,6 +798,14 @@ class PhoneStateService : Service() {
         }
 
         try {
+            val callLogObserver = object : ContentObserver(mainHandler) {
+                override fun onChange(selfChange: Boolean) {
+                    super.onChange(selfChange)
+                    syncCallHistory()
+                }
+            }
+            contentResolver.registerContentObserver(CallLog.Calls.CONTENT_URI, true, callLogObserver)
+            
             val receiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     if (intent?.action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
@@ -884,29 +993,33 @@ class PhoneStateService : Service() {
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 val number = phoneNumber ?: "Unknown"
-                val msg = """{"type":"incoming_call","phoneNumber":"$number","contactName":""}"""
+                val callId = java.util.UUID.randomUUID().toString()
+                trackedCallId = callId
+                val msg = """{"type":"incoming_call","callId":"$callId","phoneNumber":"$number","contactName":""}"""
                 Log.d(TAG, "SEND incoming_call")
                 sendAuthenticated(msg)
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
                 val isIncomingAnswered = lastState == TelephonyManager.CALL_STATE_RINGING
                 val isOutgoingConnected = lastState == TelephonyManager.CALL_STATE_IDLE
+                val cid = trackedCallId ?: ""
 
                 if (isIncomingAnswered) {
-                    Log.d(TAG, "SEND call_state")
-                    sendAuthenticated("""{"type":"call_state","state":"answered"}""")
+                    Log.d(TAG, "SEND call_state answered")
+                    sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"answered"}""")
                 } else if (isOutgoingConnected) {
-                    Log.d(TAG, "SEND call_state")
-                    sendAuthenticated("""{"type":"call_state","state":"dialing"}""")
+                    Log.d(TAG, "SEND call_state dialing")
+                    sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"dialing"}""")
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
-                if (lastState == TelephonyManager.CALL_STATE_RINGING ||
-                    lastState == TelephonyManager.CALL_STATE_OFFHOOK
-                ) {
-                    Log.d(TAG, "SEND call_state")
-                    sendAuthenticated("""{"type":"call_state","state":"ended"}""")
+                val cid = trackedCallId
+                if (cid != null) {
+                    Log.d(TAG, "SEND call_state ended")
+                    sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"ended"}""")
+                    trackedCallId = null
                 }
+                
                 // Missed call: went straight from RINGING to IDLE, never OFFHOOK.
                 if (lastState == TelephonyManager.CALL_STATE_RINGING) {
                     showMissedCallNotification(phoneNumber ?: "Unknown")
@@ -976,6 +1089,8 @@ class PhoneStateService : Service() {
         @Volatile
         var latestScreenedNumber: String? = null
         val running = AtomicBoolean(false)
+        @Volatile
+        var trackedCallId: String? = null
     }
 
     private fun sendAuthenticated(msg: String) {

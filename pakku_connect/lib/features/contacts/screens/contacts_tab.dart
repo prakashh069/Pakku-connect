@@ -21,6 +21,7 @@ class _ContactsTabState extends State<ContactsTab> {
   List<RemoteContact> _filtered = [];
   bool _loading = true;
   bool _hasError = false;
+  bool _isSearching = false;
   final _search = TextEditingController();
   WebSocketService? _wsService;
   Timer? _timeoutTimer;
@@ -135,156 +136,191 @@ class _ContactsTabState extends State<ContactsTab> {
     return groups;
   }
 
-  Widget _buildSearchBar(CustomColors colors) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: colors.background.withAlpha(100),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: colors.surface),
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 12),
-                  Icon(Icons.search, color: colors.lightText.withAlpha(128), size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _search,
-                      onChanged: _filter,
-                      style: TextStyle(color: colors.lightText, fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: 'Search contacts...',
-                        hintStyle: TextStyle(color: colors.lightText.withAlpha(128), fontSize: 14),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.zero,
+  
+
+  Widget _buildFavoritesSection(CustomColors colors, FavoritesService favService) {
+    final favorites = _filtered.where((c) => favService.isFavorite(c.id)).toList();
+    if (favorites.isEmpty) return const SizedBox.shrink();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 180,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            itemCount: favorites.length,
+            itemBuilder: (context, index) {
+              final c = favorites[index];
+              return Container(
+                width: 130,
+                margin: const EdgeInsets.only(right: 12.0),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [colors.accent.withAlpha(150), colors.surface],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(30),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () {
+                      if (c.phones.isNotEmpty) {
+                        context.read<CallManager>().dial(c.phones.first.number, contactName: c.displayName);
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          ContactAvatar(name: c.displayName, radius: 30),
+                          const Spacer(),
+                          Text(
+                            c.displayName,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                       ),
                     ),
                   ),
-                  if (_search.text.isNotEmpty)
-                    IconButton(
-                      icon: Icon(Icons.close, color: colors.lightText.withAlpha(128), size: 16),
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        _search.clear();
-                        _filter('');
-                      },
-                    ),
-                  const SizedBox(width: 4),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
-          const SizedBox(width: 12),
-          TextButton.icon(
-            onPressed: _loading ? null : _requestContactsWithTimeout,
-            icon: Icon(Icons.sync, color: colors.accent, size: 18),
-            label: Text('Sync Contacts', style: TextStyle(color: colors.accent, fontSize: 14)),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              backgroundColor: colors.accent.withAlpha(20),
-            ),
-          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildProfileAndGroupsPills(CustomColors colors) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Column(
+        children: [
+          _buildPillButton(Icons.person, 'My profile', colors),
+          const SizedBox(height: 16),
+          _buildPillButton(Icons.people, 'Groups', colors),
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget _buildFavoritesSection(CustomColors colors, FavoritesService favService) {
-    final favorites = _filtered.where((c) => favService.isFavorite(c.id)).toList();
-    
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Text('Favorites', style: TextStyle(color: colors.lightText, fontWeight: FontWeight.bold, fontSize: 16)),
-        ),
-        if (favorites.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-            child: Text('No favorites yet. Tap ⭐ to add favorites.', 
-              style: TextStyle(color: colors.lightText.withAlpha(128), fontStyle: FontStyle.italic)),
-          )
-        else
-          ...favorites.map((c) => _buildContactRow(c, colors, favService)),
-        const Divider(height: 32),
-      ],
-    );
-  }
-
-  Widget _buildRecentCallsSection(CustomColors colors) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Text('Recent Calls', style: TextStyle(color: colors.lightText, fontWeight: FontWeight.bold, fontSize: 16)),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-          child: Text('Coming Soon.\nRecent Calls will appear here.', 
-            style: TextStyle(color: colors.lightText.withAlpha(128), fontStyle: FontStyle.italic)),
-        ),
-        const Divider(height: 32),
-      ],
-    );
-  }
-
-  Widget _buildContactRow(RemoteContact c, CustomColors colors, FavoritesService favService) {
-    final isFav = favService.isFavorite(c.id);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          if (c.phones.isNotEmpty) {
-            context.read<CallManager>().dial(
-              c.phones.first.number,
-              contactName: c.displayName,
-            );
-          }
-        },
-        hoverColor: colors.accent.withAlpha(20),
-        splashColor: colors.accent.withAlpha(30),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Row(
-            children: [
-              ContactAvatar(name: c.displayName, radius: 20),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(c.displayName, style: TextStyle(color: colors.lightText, fontSize: 15, fontWeight: FontWeight.w500)),
-                    if (c.phones.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(c.phones.first.number, style: TextStyle(color: colors.lightText.withAlpha(178), fontSize: 13)),
-                    ]
-                  ],
+  Widget _buildPillButton(IconData icon, String title, CustomColors colors) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(20),
+            blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(30),
+          onTap: () {},
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: colors.accent.withAlpha(50),
+                  radius: 20,
+                  child: Icon(icon, color: colors.accent, size: 20),
                 ),
-              ),
-              IconButton(
-                icon: Icon(isFav ? Icons.star : Icons.star_border, 
-                  color: isFav ? Colors.amber : colors.lightText.withAlpha(100),
-                  size: 20,
+                const SizedBox(width: 16),
+                Text(
+                  title,
+                  style: TextStyle(color: colors.lightText, fontSize: 16, fontWeight: FontWeight.w500),
                 ),
-                onPressed: () => favService.toggleFavorite(c.id),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildContactRow(RemoteContact c, CustomColors colors, FavoritesService favService, {bool isLast = false}) {
+    final isFav = favService.isFavorite(c.id);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              if (c.phones.isNotEmpty) {
+                context.read<CallManager>().dial(
+                  c.phones.first.number,
+                  contactName: c.displayName,
+                );
+              }
+            },
+            hoverColor: colors.accent.withAlpha(20),
+            splashColor: colors.accent.withAlpha(30),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+              child: Row(
+                children: [
+                  ContactAvatar(name: c.displayName, radius: 20),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(c.displayName, style: TextStyle(color: colors.lightText, fontSize: 15, fontWeight: FontWeight.w500)),
+                        if (c.phones.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(c.phones.first.number, style: TextStyle(color: colors.lightText.withAlpha(178), fontSize: 13)),
+                        ]
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(isFav ? Icons.star : Icons.star_border, 
+                      color: isFav ? Colors.amber : colors.lightText.withAlpha(100),
+                      size: 20,
+                    ),
+                    onPressed: () => favService.toggleFavorite(c.id),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (!isLast)
+          Padding(
+            padding: const EdgeInsets.only(left: 72.0, right: 16.0),
+            child: Divider(height: 1, thickness: 1, color: colors.lightText.withAlpha(20)),
+          ),
+      ],
     );
   }
 
@@ -294,9 +330,8 @@ class _ContactsTabState extends State<ContactsTab> {
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
-        SliverToBoxAdapter(child: _buildSearchBar(colors)),
+        SliverToBoxAdapter(child: const SizedBox(height: 80)), // Space for floating pill
         SliverToBoxAdapter(child: _buildFavoritesSection(colors, favService)),
-        SliverToBoxAdapter(child: _buildRecentCallsSection(colors)),
         ...letters.where((letter) => grouped.containsKey(letter)).map((letter) {
           final groupContacts = grouped[letter]!;
           return SliverMainAxisGroup(
@@ -309,12 +344,26 @@ class _ContactsTabState extends State<ContactsTab> {
                   colors: colors,
                 ),
               ),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _buildContactRow(groupContacts[index], colors, favService),
-                  childCount: groupContacts.length,
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(groupContacts.length, (index) {
+                        final isLast = index == groupContacts.length - 1;
+                        return _buildContactRow(groupContacts[index], colors, favService, isLast: isLast);
+                      }),
+                    ),
+                  ),
                 ),
               ),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
             ],
           );
         }),
@@ -370,38 +419,104 @@ class _ContactsTabState extends State<ContactsTab> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: Row(
+      body: Stack(
         children: [
-          Expanded(
-            child: _filtered.isEmpty && _search.text.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _hasError ? 'Failed to load contacts from Android' : 'No contacts found',
-                          style: TextStyle(color: colors.lightText),
+          Row(
+            children: [
+              Expanded(
+                child: _filtered.isEmpty && _search.text.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _hasError ? 'Failed to load contacts from Android' : 'No contacts found',
+                              style: TextStyle(color: colors.lightText),
+                            ),
+                            if (_hasError) ...[
+                              const SizedBox(height: 12),
+                              TextButton.icon(
+                                onPressed: _requestContactsWithTimeout,
+                                icon: Icon(Icons.sync, color: colors.accent),
+                                label: Text('Retry', style: TextStyle(color: colors.accent)),
+                              ),
+                            ],
+                          ],
                         ),
-                        if (_hasError) ...[
-                          const SizedBox(height: 12),
-                          TextButton.icon(
-                            onPressed: _requestContactsWithTimeout,
-                            icon: Icon(Icons.sync, color: colors.accent),
-                            label: Text('Retry', style: TextStyle(color: colors.accent)),
-                          ),
-                        ],
-                      ],
-                    ),
-                  )
-                : RawScrollbar(
-                    controller: _scrollController,
-                    thickness: 4,
-                    thumbColor: colors.lightText.withAlpha(50),
-                    radius: const Radius.circular(2),
-                    child: _buildStickyHeaderList(grouped, colors, favService),
-                  ),
+                      )
+                    : _buildStickyHeaderList(grouped, colors, favService),
+              ),
+              if (_filtered.isNotEmpty) _buildAlphabetIndex(grouped, colors),
+            ],
           ),
-          if (_filtered.isNotEmpty) _buildAlphabetIndex(grouped, colors),
+          if (_isSearching)
+            Positioned(
+              top: 24,
+              left: 24,
+              right: 180, // Give space for the floating actions
+              child: Container(
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withAlpha(30), blurRadius: 10, offset: const Offset(0, 4)),
+                  ],
+                ),
+                child: TextField(
+                  controller: _search,
+                  autofocus: true,
+                  style: TextStyle(color: colors.lightText),
+                  decoration: InputDecoration(
+                    hintText: 'Search contacts...',
+                    hintStyle: TextStyle(color: colors.lightText.withAlpha(100)),
+                    border: InputBorder.none,
+                    icon: Icon(Icons.search, color: colors.lightText.withAlpha(150)),
+                  ),
+                  onChanged: _filter,
+                ),
+              ),
+            ),
+          Positioned(
+            top: 24,
+            right: 48,
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withAlpha(30), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(_isSearching ? Icons.close : Icons.search, color: colors.lightText),
+                    onPressed: () {
+                      setState(() {
+                        _isSearching = !_isSearching;
+                        if (!_isSearching) {
+                          _search.clear();
+                          _filter('');
+                        }
+                      });
+                    },
+                    tooltip: 'Search',
+                  ),
+                  IconButton(
+                    icon: _loading 
+                        ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: colors.lightText, strokeWidth: 2)) 
+                        : Icon(Icons.sync, color: colors.lightText),
+                    onPressed: _loading ? null : _requestContactsWithTimeout,
+                    tooltip: 'Sync Contacts',
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -426,14 +541,14 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
     return Container(
       key: key,
       color: colors.background.withAlpha(240),
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 32.0),
       alignment: Alignment.centerLeft,
       child: Text(
         letter,
         style: TextStyle(
-          color: colors.accent,
+          color: colors.lightText.withAlpha(150),
           fontWeight: FontWeight.bold,
-          fontSize: 14,
+          fontSize: 13,
         ),
       ),
     );

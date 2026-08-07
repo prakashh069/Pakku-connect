@@ -63,7 +63,7 @@ class CustomColors extends ThemeExtension<CustomColors> {
     );
   }
 
-  static const light = CustomColors(
+  static const dark = CustomColors(
     background: AppPalette.quantumCharcoal,
     surface: AppPalette.interfaceGray,
     accent: AppPalette.vibrantTeal,
@@ -72,12 +72,28 @@ class CustomColors extends ThemeExtension<CustomColors> {
     success: AppPalette.successGreen,
     lightText: AppPalette.lightText,
   );
+
+  static const light = CustomColors(
+    background: Color(0xFFF2F2F6), // iOS/OneUI light background
+    surface: Colors.white,
+    accent: AppPalette.vibrantTeal,
+    onAccent: Colors.white,
+    danger: AppPalette.dangerRed,
+    success: AppPalette.successGreen,
+    lightText: Color(0xFF1C1C1E), // Dark text for light mode
+  );
 }
 
-ThemeData buildAppTheme() {
-  return ThemeData.dark().copyWith(
-    scaffoldBackgroundColor: AppPalette.quantumCharcoal,
-    primaryColor: AppPalette.vibrantTeal,
-    extensions: const [CustomColors.light],
-  );
+ThemeData buildAppTheme({bool isDark = true}) {
+  return isDark
+    ? ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: AppPalette.quantumCharcoal,
+        primaryColor: AppPalette.vibrantTeal,
+        extensions: const [CustomColors.dark],
+      )
+    : ThemeData.light().copyWith(
+        scaffoldBackgroundColor: const Color(0xFFF2F2F6),
+        primaryColor: AppPalette.vibrantTeal,
+        extensions: const [CustomColors.light],
+      );
 }

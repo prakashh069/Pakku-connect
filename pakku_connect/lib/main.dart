@@ -7,8 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_theme.dart';
 import 'core/services/websocket_service.dart';
 import 'features/calling/services/call_manager.dart';
+import 'features/calling/services/recent_calls_manager.dart';
 import 'features/auth/screens/qr_pairing_screen.dart';
 import 'features/auth/screens/scan_screen.dart';
+import 'features/calling/screens/keypad_tab.dart';
+import 'features/calling/screens/recent_calls_tab.dart';
 import 'features/contacts/screens/contacts_tab.dart';
 import 'features/contacts/services/favorites_service.dart';
 import 'features/clipboard/services/clipboard_sync_manager.dart';
@@ -42,14 +45,21 @@ class PakkuApp extends StatelessWidget {
           create: (_) => WindowVisibilityService()..init(),
           dispose: (_, wvs) => wvs.dispose(),
         ),
-        ChangeNotifierProxyProvider2<WebSocketService, WindowVisibilityService, CallManager>(
-          create: (ctx) => CallManager(ctx.read<WebSocketService>(), ctx.read<WindowVisibilityService>()),
+        ChangeNotifierProxyProvider2<WebSocketService, WindowVisibilityService,
+            CallManager>(
+          create: (ctx) => CallManager(ctx.read<WebSocketService>(),
+              ctx.read<WindowVisibilityService>()),
           update: (_, ws, wvs, previous) => previous ?? CallManager(ws, wvs),
+        ),
+        ChangeNotifierProxyProvider<WebSocketService, RecentCallsManager>(
+          lazy: false,
+          create: (ctx) => RecentCallsManager(ctx.read<WebSocketService>()),
+          update: (_, ws, previous) => previous ?? RecentCallsManager(ws),
         ),
         ChangeNotifierProvider(create: (_) => FavoritesService()),
         Provider<PlatformTransport>(
-          create: (ctx) => Platform.isMacOS 
-              ? ctx.read<WebSocketService>() 
+          create: (ctx) => Platform.isMacOS
+              ? ctx.read<WebSocketService>()
               : MethodChannelTransport(),
           dispose: (_, pt) => pt.dispose(),
         ),
@@ -63,7 +73,9 @@ class PakkuApp extends StatelessWidget {
         title: 'Pakku Connect',
         debugShowCheckedModeBanner: false,
         navigatorKey: navigatorKey,
-        theme: buildAppTheme(),
+        theme: buildAppTheme(isDark: false),
+        darkTheme: buildAppTheme(isDark: true),
+        themeMode: ThemeMode.system,
         initialRoute: '/',
         routes: {
           '/': (_) => const RootRouter(),
@@ -102,7 +114,8 @@ class _RootRouterState extends State<RootRouter> {
           final wasPaired = prefs.getBool('paired') ?? false;
           if (wasPaired) {
             await prefs.setBool('paired', false);
-            navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+            navigatorKey.currentState
+                ?.pushNamedAndRemoveUntil('/', (route) => false);
           }
         };
       }
@@ -117,7 +130,7 @@ class _RootRouterState extends State<RootRouter> {
 
   Future<void> _setup() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     if (!mounted) return;
 
     // Wire ClipboardShareCoordinator to receive validated inbound clipboard events (both macOS and Android).
@@ -134,12 +147,12 @@ class _RootRouterState extends State<RootRouter> {
       final ws = context.read<WebSocketService>();
       final manager = context.read<CallManager>();
 
-      ws.onIncomingCall = (number, name) {
-        manager.handleIncoming(number, name);
+      ws.onIncomingCall = (callId, number, name) {
+        manager.handleIncoming(callId, number, name);
       };
-      
-      ws.onCallState = (state) {
-        manager.handleCallState(state);
+
+      ws.onCallState = (callId, state) {
+        manager.handleCallState(callId, state);
       };
 
       ws.onConnectionChange = (connected) {
@@ -160,7 +173,8 @@ class _RootRouterState extends State<RootRouter> {
       ws.onUnpair = () async {
         await prefs.setBool('paired', false);
         ws.disconnect();
-        navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+        navigatorKey.currentState
+            ?.pushNamedAndRemoveUntil('/', (route) => false);
       };
 
       const menuBarChannel = MethodChannel('com.pakku.connect/menuBar');
@@ -237,7 +251,7 @@ class _RootRouterState extends State<RootRouter> {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final DeviceSessionState sessionState;
 
   const HomeScreen({
@@ -245,7 +259,15 @@ class HomeScreen extends StatelessWidget {
     this.sessionState = DeviceSessionState.connected,
   });
 
-  Widget _buildAndroidLayout(BuildContext context, CustomColors colors, WebSocketService ws) {
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _currentIndex = 2; // Default to Contacts
+
+  Widget _buildAndroidLayout(
+      BuildContext context, CustomColors colors, WebSocketService ws) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -297,7 +319,8 @@ class HomeScreen extends StatelessWidget {
           Flexible(
             child: Text(
               value,
-              style: TextStyle(color: colors.lightText.withAlpha(178), fontSize: 13),
+              style: TextStyle(
+                  color: colors.lightText.withAlpha(178), fontSize: 13),
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
             ),
@@ -307,9 +330,14 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMacStatusPanel(BuildContext context, CustomColors colors, WebSocketService ws) {
-    final isConnected = sessionState == DeviceSessionState.connected;
-    final statusText = isConnected ? '🟢 Connected' : (sessionState == DeviceSessionState.paused ? '⏸ Paused' : '🔴 Offline');
+  Widget _buildMacStatusPanel(
+      BuildContext context, CustomColors colors, WebSocketService ws) {
+    final isConnected = widget.sessionState == DeviceSessionState.connected;
+    final statusText = isConnected
+        ? '🟢 Connected'
+        : (widget.sessionState == DeviceSessionState.paused
+            ? '⏸ Paused'
+            : '🔴 Offline');
     final contactCount = ws.cachedContacts.length;
 
     return Container(
@@ -321,7 +349,11 @@ class HomeScreen extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(statusText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+            child: Text(statusText,
+                style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14)),
           ),
           const SizedBox(height: 8),
           Divider(color: colors.surface, thickness: 1, height: 1),
@@ -334,43 +366,110 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMacLayout(BuildContext context, CustomColors colors, WebSocketService ws) {
+  Widget _buildMacLayout(
+      BuildContext context, CustomColors colors, WebSocketService ws) {
     return Column(
       children: [
-        if (sessionState == DeviceSessionState.disconnected || sessionState == DeviceSessionState.reconnecting || sessionState == DeviceSessionState.connecting || sessionState == DeviceSessionState.paused)
+        if (widget.sessionState == DeviceSessionState.disconnected ||
+            widget.sessionState == DeviceSessionState.reconnecting ||
+            widget.sessionState == DeviceSessionState.connecting ||
+            widget.sessionState == DeviceSessionState.paused)
           Container(
             width: double.infinity,
-            color: sessionState == DeviceSessionState.paused ? Colors.orange.shade900 : (sessionState == DeviceSessionState.connecting || sessionState == DeviceSessionState.reconnecting) ? Colors.blue.shade900 : Colors.red.shade900,
+            color: widget.sessionState == DeviceSessionState.paused
+                ? Colors.orange.shade900
+                : (widget.sessionState == DeviceSessionState.connecting ||
+                        widget.sessionState == DeviceSessionState.reconnecting)
+                    ? Colors.blue.shade900
+                    : Colors.red.shade900,
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
-              sessionState == DeviceSessionState.paused ? 'Connection paused' : (sessionState == DeviceSessionState.connecting || sessionState == DeviceSessionState.reconnecting) ? 'Connecting...' : 'Phone is offline',
+              widget.sessionState == DeviceSessionState.paused
+                  ? 'Connection paused'
+                  : (widget.sessionState == DeviceSessionState.connecting ||
+                          widget.sessionState ==
+                              DeviceSessionState.reconnecting)
+                      ? 'Connecting...'
+                      : 'Phone is offline',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         Expanded(
           child: Row(
             children: [
-              const Expanded(flex: 85, child: ContactsTab()),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: IndexedStack(
+                        index: _currentIndex,
+                        children: const [
+                          KeypadTab(),
+                          RecentCallsTab(),
+                          ContactsTab(),
+                        ],
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Container(
+                          width: 260, // concise width
+                          decoration: BoxDecoration(
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(50),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(30),
+                            child: NavigationBar(
+                              selectedIndex: _currentIndex,
+                              onDestinationSelected: (idx) {
+                                setState(() {
+                                  _currentIndex = idx;
+                                });
+                              },
+                              height: 52, // smaller height
+                              elevation: 0,
+                              backgroundColor: Colors.transparent,
+                              indicatorColor: colors.accent.withAlpha(80),
+                              labelBehavior:
+                                  NavigationDestinationLabelBehavior.alwaysHide,
+                              destinations: const [
+                                NavigationDestination(
+                                    icon: Icon(Icons.dialpad, size: 22),
+                                    label: 'Keypad'),
+                                NavigationDestination(
+                                    icon: Icon(Icons.history, size: 22),
+                                    label: 'Recents'),
+                                NavigationDestination(
+                                    icon: Icon(Icons.contacts, size: 22),
+                                    label: 'Contacts'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Container(width: 1, color: colors.surface),
-              Expanded(flex: 15, child: _buildMacStatusPanel(context, colors, ws)),
+              SizedBox(
+                  width: 180, child: _buildMacStatusPanel(context, colors, ws)),
             ],
           ),
         ),
-        Container(
-          height: 24,
-          color: colors.background,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Row(
-            children: [
-              Text(sessionState == DeviceSessionState.connected ? 'Connected' : 'Offline', style: const TextStyle(fontSize: 12, color: Colors.white70)),
-              const Spacer(),
-              Text('${ws.cachedContacts.length} Contacts', style: const TextStyle(fontSize: 12, color: Colors.white70)),
-              const SizedBox(width: 16),
-              const Text('Last Sync: Unknown', style: TextStyle(fontSize: 12, color: Colors.white70)),
-            ],
-          ),
-        ),
+
       ],
     );
   }
@@ -379,7 +478,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<CustomColors>()!;
     final ws = context.watch<WebSocketService>();
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pakku Connect'),
@@ -410,13 +509,16 @@ class HomeScreen extends StatelessWidget {
                             ),
                             if (Platform.isAndroid)
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0, vertical: 8.0),
                                 child: ElevatedButton.icon(
                                   icon: const Icon(Icons.flash_on),
                                   label: const Text('Enable Auto-Paste'),
                                   onPressed: () {
-                                    const platform = MethodChannel('com.pakku.connect/platform');
-                                    platform.invokeMethod('requestOverlayPermission');
+                                    const platform = MethodChannel(
+                                        'com.pakku.connect/platform');
+                                    platform.invokeMethod(
+                                        'requestOverlayPermission');
                                   },
                                 ),
                               ),
@@ -425,7 +527,8 @@ class HomeScreen extends StatelessWidget {
                                 padding: EdgeInsets.symmetric(horizontal: 16.0),
                                 child: Text(
                                   'Requires "Display over other apps" permission to instantly paste text copied from your Mac in the background.',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.grey),
                                 ),
                               ),
                           ],
@@ -449,7 +552,7 @@ class HomeScreen extends StatelessWidget {
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setBool('paired', false);
-              
+
               if (Platform.isMacOS) {
                 if (context.mounted) {
                   ws.send({'type': 'unpair'});
@@ -460,9 +563,10 @@ class HomeScreen extends StatelessWidget {
                 const platform = MethodChannel('com.pakku.connect/platform');
                 await platform.invokeMethod('unpair');
               }
-              
+
               if (context.mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                Navigator.of(context)
+                    .pushNamedAndRemoveUntil('/', (route) => false);
               }
             },
           ),

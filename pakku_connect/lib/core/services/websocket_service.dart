@@ -24,14 +24,16 @@ class WebSocketService implements PlatformTransport {
   bool _isIntentionalDisconnect = false;
   bool _paused = false;
   bool _authenticated = false;
+  
+  bool get isConnected => _authenticated;
 
   final StreamController<Map<String, dynamic>> _messageController = StreamController.broadcast();
 
   @override
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
 
-  void Function(String phoneNumber, String? contactName)? onIncomingCall;
-  void Function(String state)? onCallState; // "answered" | "ended"
+  void Function(String callId, String phoneNumber, String? contactName)? onIncomingCall;
+  void Function(String callId, String state)? onCallState; // "answered" | "ended"
   void Function(bool connected)? onConnectionChange;
   void Function(DeviceSessionState state)? onDeviceStateChanged;
   void Function(List<RemoteContact> contacts)? onContactsReceived;
@@ -142,11 +144,12 @@ class WebSocketService implements PlatformTransport {
       final type = data['type'] as String?;
       if (type == MessageTypes.incomingCall) {
         onIncomingCall?.call(
+          data['callId'] as String? ?? '',
           data['phoneNumber'] as String? ?? 'Unknown',
           data['contactName'] as String?,
         );
       } else if (type == MessageTypes.callState) {
-        onCallState?.call(data['state'] as String? ?? 'ended');
+        onCallState?.call(data['callId'] as String? ?? '', data['state'] as String? ?? 'ended');
       } else if (type == MessageTypes.deviceState) {
         final state = data['state'];
         

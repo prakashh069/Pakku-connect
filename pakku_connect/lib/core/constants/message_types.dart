@@ -12,4 +12,6 @@ class MessageTypes {
   static const String error = 'error';
   static const String unpair = 'unpair';
   static const String shareClipboard = 'share.clipboard';
+  static const String requestCallHistory = 'request.call_history';
+  static const String syncCallHistory = 'sync.call_history';
 }

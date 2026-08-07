@@ -1,7 +1,10 @@
+import 'package:uuid/uuid.dart';
+
 enum CallDirection { incoming, outgoing }
 enum CallState { ringing, answeredRemotely, declinedRemotely, ended }
 
 class Call {
+  final String callId;
   final String phoneNumber;
   final String? contactName;
   final CallDirection direction;
@@ -9,10 +12,12 @@ class Call {
   final DateTime startedAt;
 
   Call({
+    String? callId,
     required this.phoneNumber,
     this.contactName,
     required this.direction,
     this.state = CallState.ringing,
     DateTime? startedAt,
-  }) : startedAt = startedAt ?? DateTime.now();
+  })  : callId = callId ?? const Uuid().v4(),
+        startedAt = startedAt ?? DateTime.now();
 }
