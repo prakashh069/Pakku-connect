@@ -121,6 +121,8 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Image.asset('assets/images/app_logo.png', width: 120, height: 120),
+              const SizedBox(height: 32),
               if (_qrData != null)
                 Container(
                   padding: const EdgeInsets.all(16),
