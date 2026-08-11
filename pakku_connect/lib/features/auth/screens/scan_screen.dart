@@ -51,7 +51,18 @@ class _ScanScreenState extends State<ScanScreen> {
       _error = null;
     });
 
-    final payload = CryptoService.verifyJWT(code);
+    final unverified = CryptoService.extractUnverifiedPayload(code);
+    final hmacSecret = unverified?['hmac_secret'] as String?;
+
+    if (hmacSecret == null) {
+      setState(() {
+        _verifying = false;
+        _error = 'QR missing security provisioning (hmac_secret)';
+      });
+      return;
+    }
+
+    final payload = CryptoService.verifyJWT(code, hmacSecret);
     if (payload == null) {
       setState(() {
         _verifying = false;
@@ -75,12 +86,13 @@ class _ScanScreenState extends State<ScanScreen> {
     try {
       await _platform.invokeMethod(
         'saveWsEndpoint',
-        {'ip': ip, 'port': port, 'certFp': certFp},
+        {'ip': ip, 'port': port, 'certFp': certFp, 'hmacSecret': hmacSecret},
       );
       
       const storage = FlutterSecureStorage();
       await storage.write(key: 'ws_ip', value: ip);
       await storage.write(key: 'ws_port', value: port.toString());
+      await storage.write(key: 'hmacSecret', value: hmacSecret);
       if (certFp != null) {
         await storage.write(key: 'cert_fp', value: certFp);
       }

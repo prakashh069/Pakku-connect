@@ -8,11 +8,12 @@ import android.util.Log
 
 class CallNotificationListenerService : NotificationListenerService() {
 
+    private var wasDialing = false
+    private var hasSentAnswered = false
+
     companion object {
         const val TAG = "CallNotifListener"
         const val ACTION_CALL_ANSWERED = "com.pakku.pakku_connect.CALL_ANSWERED"
-        private var wasDialing = false
-        private var hasSentAnswered = false
     }
 
     override fun onListenerConnected() {
@@ -40,14 +41,18 @@ class CallNotificationListenerService : NotificationListenerService() {
             val body = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.lowercase() ?: ""
             val usesChronometer = extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER, false)
             
-            Log.d(TAG, "Call notification detected: pkg=$packageName, title='$title', body='$body', chrono=$usesChronometer")
+            Log.d(TAG, "Call notification detected: pkg=$packageName, title='[REDACTED]', body='[REDACTED]', chrono=$usesChronometer")
 
             val isDialing = body.contains("calling") || 
                             body.contains("ringing") || 
                             body.contains("dialing") || 
+                            body.contains("dialling") ||
+                            body.contains("outgoing") ||
                             title.contains("calling") || 
                             title.contains("ringing") || 
-                            title.contains("dialing")
+                            title.contains("dialing") ||
+                            title.contains("dialling") ||
+                            title.contains("outgoing")
 
             if (isDialing) {
                 wasDialing = true

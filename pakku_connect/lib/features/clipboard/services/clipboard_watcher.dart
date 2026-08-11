@@ -89,7 +89,7 @@ class ClipboardWatcher with WidgetsBindingObserver {
     if (_timer != null) return; // already running
     // Immediately check on (re)start to catch copy-then-switch-to-app pattern.
     _checkClipboard();
-    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) => _checkClipboard());
+    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _checkClipboard());
   }
 
   void _cancelTimer() {

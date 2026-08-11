@@ -1,7 +1,7 @@
 const fs = require('fs');
 const https = require('https');
 const WebSocket = require('ws');
-require('dotenv').config();
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // Structured logging
@@ -28,8 +28,13 @@ const server = https.createServer({ cert, key });
 const wss    = new WebSocket.Server({ server });
 
 // ---------------------------------------------------------------------------
-// Security constants
+// Security constants & IPC Provisioning
 // ---------------------------------------------------------------------------
+const ipcToken = crypto.randomBytes(32).toString('hex');
+const TOKEN_PATH = '/tmp/pakku.token';
+fs.writeFileSync(TOKEN_PATH, ipcToken, { mode: 0o600 });
+let hmacSecret = null;
+let tokenConsumed = false;
 const MAX_PAYLOAD_BYTES       = 5 * 1024 * 1024; // 5 MB (accommodates large contact lists)
 const MAX_UNAUTHENTICATED     = 10;          // max simultaneous unauthed sockets
 const HANDSHAKE_TIMEOUT_MS    = 5000;        // 5 s to send hello after connect
@@ -187,10 +192,38 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
-    // 3.6 — Pre-auth: only 'hello' is permitted before authentication.
+    // 3.6 — Pre-auth: only 'hello' or 'set_secret' is permitted before authentication.
     // The existing Hello handshake (ES256/TOFU) is the authentication mechanism.
     // We enforce that no other message type is processed before auth completes.
     if (!ws.authenticated) {
+      if (data.type === 'set_secret') {
+        // Validate the IPC token (file on disk is the security boundary — only local process can read it).
+        // We allow re-provisioning so the QR screen can update the secret after hot-restarts
+        // or logout-login cycles without needing a full server restart.
+        if (data.token !== ipcToken) {
+          errLog('invalid_ipc_token', { ip });
+          recordFailure(ip);
+          ws.close(1008, 'Invalid token');
+          return;
+        }
+        if (typeof data.secret !== 'string' || data.secret.length < 16) {
+          errLog('invalid_hmac_secret', { ip });
+          recordFailure(ip);
+          ws.close(1008, 'Invalid secret');
+          return;
+        }
+        hmacSecret = data.secret;
+        // Disconnect any currently authenticated clients so they re-auth with the new secret
+        wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN && client.authenticated) {
+            client.close(1008, 'Secret rotated');
+          }
+        });
+        log('hmac_secret_provisioned', { ip });
+        return;
+      }
+
+
       if (data.type !== 'hello') {
         errLog('pre_auth_message_rejected', { ip, type: data.type });
         recordFailure(ip);
@@ -198,23 +231,103 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      // 'hello' received — mark as authenticated and transition to active state.
-      // The existing Hello protocol (verified by the Flutter layer / cert pinning) is
-      // the source of trust. We do not re-validate its payload here.
+      // JWT Verification for 'hello'
+      if (!hmacSecret) {
+        errLog('hmac_secret_not_provisioned', { ip });
+        recordFailure(ip);
+        ws.close(1008, 'Server not fully provisioned');
+        return;
+      }
+
+      if (typeof data.jwt !== 'string') {
+        errLog('missing_jwt', { ip });
+        recordFailure(ip);
+        ws.close(1008, 'Missing JWT');
+        return;
+      }
+
+      const parts = data.jwt.split('.');
+      if (parts.length !== 3) {
+        errLog('invalid_jwt_format', { ip });
+        recordFailure(ip);
+        ws.close(1008, 'Invalid JWT');
+        return;
+      }
+
+      const [header, payload, signature] = parts;
+      const expectedSig = crypto
+        .createHmac('sha256', hmacSecret)
+        .update(`${header}.${payload}`)
+        .digest('base64url');
+
+      if (signature !== expectedSig) {
+        errLog('invalid_jwt_signature', { ip });
+        recordFailure(ip);
+        ws.close(1008, 'Invalid signature');
+        return;
+      }
+
+      // JWT Expiration & Freshness Validation
+      let jwtPayloadObj;
+      try {
+        const decodedPayload = Buffer.from(payload, 'base64url').toString('utf8');
+        jwtPayloadObj = JSON.parse(decodedPayload);
+      } catch (e) {
+        errLog('invalid_jwt_payload_format', { ip });
+        recordFailure(ip);
+        ws.close(1008, 'Invalid JWT Payload');
+        return;
+      }
+
+      const nowSecs = Math.floor(Date.now() / 1000);
+      if (!jwtPayloadObj.exp || nowSecs > jwtPayloadObj.exp) {
+        errLog('jwt_expired', { ip, exp: jwtPayloadObj.exp });
+        recordFailure(ip);
+        ws.close(1008, 'Token expired');
+        return;
+      }
+
+      if (jwtPayloadObj.nbf && nowSecs < jwtPayloadObj.nbf) {
+        errLog('jwt_not_yet_valid', { ip, nbf: jwtPayloadObj.nbf });
+        recordFailure(ip);
+        ws.close(1008, 'Token not yet valid');
+        return;
+      }
+
+      // 'hello' received and verified — mark as authenticated and transition to active state.
       ws.authenticated = true;
       unauthenticatedCount = Math.max(0, unauthenticatedCount - 1);
       clearTimeout(handshakeTimer);
+
+      // FINDING-SEC-003: Sanitize deviceName and platform allowlist
+      if (typeof data.deviceName === 'string') {
+        data.deviceName = data.deviceName.replace(/[\x00-\x1F\x7F]/g, '').substring(0, 64);
+      } else {
+        data.deviceName = 'Unknown Device';
+      }
+
+      if (data.platform === 'macOS' || data.platform === 'macos') {
+        data.platform = 'macOS';
+      } else {
+        data.platform = 'Android';
+      }
+
+      // Re-serialize the sanitized data so that forwarded messages are clean
+      raw = Buffer.from(JSON.stringify(data));
 
       // Determine client role from hello payload for logging
       if (['dial', 'reject_call', 'end_call', 'answer_call', 'contacts_request'].includes(data.type)) {
         ws.clientName = 'macOS';
       } else {
-        ws.clientName = data.platform === 'macOS' ? 'macOS' : 'Android';
+        ws.clientName = data.platform;
       }
 
       console.log('Received hello');
       console.log('Authentication successful');
       log('client_authenticated', { ip, name: ws.clientName });
+
+      // Send auth_ack to the authenticated client
+      ws.send(JSON.stringify({ type: 'auth_ack' }));
 
       // Forward hello to other clients so they can complete their own handshake
       wss.clients.forEach((client) => {
@@ -231,7 +344,7 @@ wss.on('connection', (ws, req) => {
     if (!ws.clientName) {
       if (['dial', 'reject_call', 'end_call', 'answer_call', 'contacts_request'].includes(data.type)) {
         ws.clientName = 'macOS';
-      } else if (['device_state', 'call_state', 'contacts', 'action_result', 'incoming_call'].includes(data.type)) {
+      } else if (['device_state', 'call_state', 'contacts', 'action_result', 'incoming_call', 'unpair'].includes(data.type)) {
         ws.clientName = 'Android';
       } else {
         ws.clientName = 'Unknown';
@@ -265,6 +378,7 @@ server.listen(port, () => {
 const shutdown = (signal) => {
   log('server_shutting_down', { signal });
   clearInterval(heartbeatInterval);
+  try { fs.unlinkSync(TOKEN_PATH); } catch (e) {}
   wss.clients.forEach((ws) => {
     ws.close(1001, 'Server shutting down');
   });

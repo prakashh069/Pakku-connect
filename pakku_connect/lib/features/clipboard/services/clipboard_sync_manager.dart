@@ -54,6 +54,7 @@ class ClipboardSyncManager extends ChangeNotifier {
   String? _lastLocalClipboardID;
   String? _lastRemoteClipboardID;
   String? _lastReceivedClipboardSignature;
+  DateTime? _lastInboundTime;
 
   /// Device name read once at init and sent with every outbound message.
   String _deviceName = 'Android';
@@ -113,11 +114,21 @@ class ClipboardSyncManager extends ChangeNotifier {
   void _onLocalClipboardChanged(String text, String? imageBase64) {
     if (!_enabled) return;
     if (text.isEmpty && imageBase64 == null) return;
+    
+    // Global temporal deduplication to prevent echo loops when we write to our own clipboard.
+    // Especially critical for images since the native layer strips the payload body before forwarding.
+    if (_lastInboundTime != null && DateTime.now().difference(_lastInboundTime!) < const Duration(milliseconds: 1500)) {
+      return;
+    }
 
     // Deduplicate outbound
-    final payloadSignature = imageBase64 != null
-        ? 'img:${imageBase64.hashCode}'
-        : 'txt:$text';
+    final String payloadSignature;
+    if (imageBase64 != null) {
+      payloadSignature = 'img:${imageBase64.hashCode}';
+    } else {
+      final normalizedText = text.replaceAll('\r\n', '\n').trim();
+      payloadSignature = 'txt:$normalizedText';
+    }
     
     // Prevent echoing back what we just received over the network
     if (payloadSignature == _lastReceivedClipboardSignature) return;
@@ -190,14 +201,16 @@ class ClipboardSyncManager extends ChangeNotifier {
       final payload = data['payload'];
       if (payload is! Map<String, dynamic>) return;
 
-      final id = payload['id'] as String?;
-      if (id == null || id.isEmpty) return;
+      final rawId = payload['id'];
+      if (rawId is! String || rawId.isEmpty) return;
+      final id = rawId;
 
       // ID-based deduplication (handles duplicate deliveries of the same message).
       if (id == _lastRemoteClipboardID) return;
 
-      final mime = payload['mime'] as String?;
-      if (mime == null || mime.isEmpty) return;
+      final rawMime = payload['mime'];
+      if (rawMime is! String || rawMime.isEmpty) return;
+      final mime = rawMime;
 
       final rawContent = payload['content'];
       if (rawContent is! Map<String, dynamic>) return;
@@ -213,18 +226,24 @@ class ClipboardSyncManager extends ChangeNotifier {
       }
 
       // Content-based deduplication (prevents echo loops when a receiving device writes to its own clipboard and broadcasts it back).
-      final payloadSignature = mime == ShareMime.text 
-          ? 'txt:$body' 
-          : 'img:${body.hashCode}';
+      final String payloadSignature;
+      if (mime == ShareMime.text && body is String) {
+        final normalizedText = body.replaceAll('\r\n', '\n').trim();
+        payloadSignature = 'txt:$normalizedText';
+      } else {
+        payloadSignature = 'img:${body.hashCode}';
+      }
           
       if (payloadSignature == _lastLocalClipboardID) return;
 
       _lastRemoteClipboardID = id;
       _lastReceivedClipboardSignature = payloadSignature;
+      _lastInboundTime = DateTime.now();
 
-      final deviceName =
-          payload['deviceName'] as String? ?? 'Android';
-      final timestamp = data['timestamp'] as int? ?? 0;
+      final rawDeviceName = payload['deviceName'];
+      final deviceName = rawDeviceName is String ? rawDeviceName : 'Android';
+      final rawTimestamp = data['timestamp'];
+      final timestamp = rawTimestamp is int ? rawTimestamp : 0;
 
       _inboundController.add(ShareEvent(
         id: id,

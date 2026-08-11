@@ -1,4 +1,5 @@
 class MessageTypes {
+  const MessageTypes._();
   static const String incomingCall = 'incoming_call';
   static const String answerCall = 'answer_call';
   static const String rejectCall = 'reject_call';

@@ -320,6 +320,7 @@ class ClipboardPanelController {
     // MARK: - Actions
 
     @objc private func copyClicked() {
+        MacClipboardSync.shared.ignoreUntilCount = NSPasteboard.general.changeCount + 2
         NSPasteboard.general.clearContents()
 
         // Copy uses pre-decoded Data only — never decodes Base64 again.

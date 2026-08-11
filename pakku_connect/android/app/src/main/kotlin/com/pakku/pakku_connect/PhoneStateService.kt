@@ -272,6 +272,7 @@ class PhoneStateService : Service() {
             val ip = prefs.getString("ws_ip", "") ?: ""
             val port = prefs.getInt("ws_port", 0)
             val certFp = prefs.getString("cert_fp", "") ?: ""
+            val hmacSecret = prefs.getString("hmac_secret", "") ?: ""
 
             // Validate configuration thoroughly before proceeding
             if (ip.isEmpty() || port !in 1..65535) {
@@ -306,25 +307,21 @@ class PhoneStateService : Service() {
                     Log.d(TAG, "WebSocket OPEN")
                     reconnectAttempt = 0
                     try {
+                        val jwt = if (hmacSecret.isNotEmpty()) {
+                            generateJwt(hmacSecret, android.os.Build.MODEL, "android_service")
+                        } else {
+                            "unprovisioned"
+                        }
+
                         val helloMsg = JSONObject().apply {
                             put("type", "hello")
                             put("deviceName", android.os.Build.MODEL)
                             put("platform", "android_service")
+                            put("jwt", jwt)
                         }
                         Log.d(TAG, "SEND hello")
                         webSocket.send(helloMsg.toString())
-
-                        authenticated = true
-
-                        val msg = JSONObject().apply {
-                            put("type", "device_state")
-                            put("state", "connected")
-                        }
-                        Log.d(TAG, "SEND device_state")
-                        webSocket.send(msg.toString())
-
-                        // Initial sync
-                        syncCallHistory()
+                        Log.d(TAG, "Waiting for auth_ack...")
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to send initial messages: ${e.message}")
                     }
@@ -372,6 +369,17 @@ class PhoneStateService : Service() {
                     val json = JSONObject(text)
                     val msgType = json.optString("type")
                     when (msgType) {
+                        "auth_ack" -> {
+                            Log.d(TAG, "Authentication successful")
+                            authenticated = true
+                            val msg = JSONObject().apply {
+                                put("type", "device_state")
+                                put("state", "connected")
+                            }
+                            Log.d(TAG, "SEND device_state")
+                            webSocket.send(msg.toString())
+                            syncCallHistory()
+                        }
                         "unpair" -> {
                             Log.i(TAG, "Received unpair command")
                             val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
@@ -393,11 +401,17 @@ class PhoneStateService : Service() {
                                     val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
                                     tm.acceptRingingCall()
                                     Log.d(TAG, "Native answer executed")
+                                    sendAuthenticated("""{"type":"action_result","action":"answer_call","success":true}""")
                                 } catch (e: SecurityException) {
                                     Log.e(TAG, "Permission denied for acceptRingingCall", e)
+                                    sendAuthenticated("""{"type":"action_result","action":"answer_call","success":false,"error":"Permission denied"}""")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to accept call", e)
+                                    sendAuthenticated("""{"type":"action_result","action":"answer_call","success":false,"error":"${e.message}"}""")
                                 }
                             } else {
                                 Log.w(TAG, "acceptRingingCall requires API 28+")
+                                sendAuthenticated("""{"type":"action_result","action":"answer_call","success":false,"error":"Requires API 28+"}""")
                             }
                         }
                         "reject_call" -> {
@@ -411,10 +425,13 @@ class PhoneStateService : Service() {
                                     tm.silenceRinger()
                                     Log.d(TAG, "Native silenceRinger executed (legacy)")
                                 }
+                                sendAuthenticated("""{"type":"action_result","action":"reject_call","success":true}""")
                             } catch (e: SecurityException) {
                                 Log.e(TAG, "Permission denied for reject_call", e)
+                                sendAuthenticated("""{"type":"action_result","action":"reject_call","success":false,"error":"Permission denied"}""")
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to reject call", e)
+                                sendAuthenticated("""{"type":"action_result","action":"reject_call","success":false,"error":"${e.message}"}""")
                             }
                         }
                         "end_call" -> {
@@ -566,6 +583,27 @@ class PhoneStateService : Service() {
             }
         })
         }
+    }
+
+    private fun generateJwt(secret: String, deviceName: String, platform: String): String {
+        val header = JSONObject().apply {
+            put("alg", "HS256")
+            put("typ", "JWT")
+        }
+        val payload = JSONObject().apply {
+            put("device_id", "android_" + android.os.Build.MODEL)
+            put("device_name", deviceName)
+            put("platform", platform)
+            put("exp", (System.currentTimeMillis() / 1000) + 300)
+        }
+        val h = android.util.Base64.encodeToString(header.toString().toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+        val p = android.util.Base64.encodeToString(payload.toString().toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+        
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(secret.toByteArray(), "HmacSHA256"))
+        val sigBytes = mac.doFinal("$h.$p".toByteArray())
+        val sig = android.util.Base64.encodeToString(sigBytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+        return "$h.$p.$sig"
     }
 
     private fun handleEndCall(ws: WebSocket?) {
@@ -834,7 +872,8 @@ class PhoneStateService : Service() {
                 override fun onReceive(context: Context?, intent: Intent?) {
                     if (intent?.action == CallNotificationListenerService.ACTION_CALL_ANSWERED) {
                         if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
-                            sendAuthenticated("""{"type":"call_state","state":"answered"}""")
+                            val cid = trackedCallId ?: ""
+                            sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"answered"}""")
                             Log.d(TAG, "Sent call_state=answered (outgoing via notification)")
                         }
                     }

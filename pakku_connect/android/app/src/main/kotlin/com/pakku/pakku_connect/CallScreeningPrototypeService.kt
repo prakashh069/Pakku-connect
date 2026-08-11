@@ -11,7 +11,7 @@ class CallScreeningPrototypeService : CallScreeningService() {
         Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: CallScreeningPrototypeService.onScreenCall() invoked.")
         
         val handle = callDetails.handle?.schemeSpecificPart
-        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: CallScreeningPrototypeService Call.Details.handle: ${callDetails.handle != null}")
+        Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: CallScreeningPrototypeService Call.Details.handle: [REDACTED]")
         Log.d(TAG, "INSTRUMENTATION-DEEP [$timestamp]: CallScreeningPrototypeService Call Received")
 
         // Pass the number to PhoneStateService so it can use it when the broadcast arrives

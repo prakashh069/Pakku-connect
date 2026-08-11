@@ -14,11 +14,10 @@ dependencies:
   web_socket_channel: ^3.0.1
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
-  flutter_secure_storage: ^9.2.4
-  flutter_dotenv: ^5.2.1
+  flutter_secure_storage: ^11.0.0
   crypto: ^3.0.6
   shared_preferences: ^2.3.4
-  network_info_plus: ^6.0.1
+  network_info_plus: ^8.2.1
   intl: ^0.20.3
   uuid: ^4.6.0
 
@@ -34,5 +33,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - .env
     - certs/device.der

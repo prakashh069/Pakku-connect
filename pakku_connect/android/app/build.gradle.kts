@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.pakku.pakku_connect"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

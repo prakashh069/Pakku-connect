@@ -23,6 +23,7 @@ class _ContactsTabState extends State<ContactsTab> {
   bool _hasError = false;
   bool _isSearching = false;
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
   WebSocketService? _wsService;
   Timer? _timeoutTimer;
   final ScrollController _scrollController = ScrollController();
@@ -56,6 +57,7 @@ class _ContactsTabState extends State<ContactsTab> {
       _wsService?.onContactsReceived = null;
     }
     _search.dispose();
+    _searchFocus.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -466,7 +468,7 @@ class _ContactsTabState extends State<ContactsTab> {
                 ),
                 child: TextField(
                   controller: _search,
-                  autofocus: true,
+                  focusNode: _searchFocus,
                   style: TextStyle(color: colors.lightText),
                   decoration: InputDecoration(
                     hintText: 'Search contacts...',
@@ -501,8 +503,12 @@ class _ContactsTabState extends State<ContactsTab> {
                         if (!_isSearching) {
                           _search.clear();
                           _filter('');
+                          _searchFocus.unfocus();
                         }
                       });
+                      if (_isSearching) {
+                        _searchFocus.requestFocus();
+                      }
                     },
                     tooltip: 'Search',
                   ),

@@ -162,6 +162,7 @@ class MacClipboardSync {
     static let shared = MacClipboardSync()
     private var methodChannel: FlutterMethodChannel?
     private var lastChangeCount: Int = 0
+    var ignoreUntilCount: Int = -1
     private var timer: Timer?
 
     private init() {}
@@ -189,7 +190,7 @@ class MacClipboardSync {
     
     private func startWatching() {
         if timer != nil { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             self?.checkClipboard()
         }
     }
@@ -209,16 +210,32 @@ class MacClipboardSync {
         
         lastChangeCount = currentChangeCount
         
+        if currentChangeCount <= ignoreUntilCount {
+            return
+        }
+        
         if let image = pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage {
-            // It's an image
-            if let tiffData = image.tiffRepresentation,
-               let bitmapImage = NSBitmapImageRep(data: tiffData),
-               let pngData = bitmapImage.representation(using: .png, properties: [:]) {
-                
-                let base64 = pngData.base64EncodedString()
-                methodChannel?.invokeMethod("clipboardImageChanged", arguments: base64)
+            // Check if it's actually an image on the clipboard to avoid interpreting files as images unnecessarily
+            let types = pasteboard.types ?? []
+            let isActualImage = types.contains(.png) || types.contains(.tiff) || types.contains(NSPasteboard.PasteboardType("public.jpeg"))
+            
+            if isActualImage {
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    if let tiffData = image.tiffRepresentation,
+                       let bitmapImage = NSBitmapImageRep(data: tiffData),
+                       let jpegData = bitmapImage.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
+                        
+                        let base64 = jpegData.base64EncodedString()
+                        DispatchQueue.main.async {
+                            self?.methodChannel?.invokeMethod("clipboardImageChanged", arguments: base64)
+                        }
+                    }
+                }
+                return
             }
-        } else if let text = pasteboard.string(forType: .string) {
+        } 
+        
+        if let text = pasteboard.string(forType: .string) {
             // It's text
             methodChannel?.invokeMethod("clipboardTextChanged", arguments: text)
         }

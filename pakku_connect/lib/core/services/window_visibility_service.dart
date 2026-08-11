@@ -44,6 +44,7 @@ class WindowVisibilityService {
   }
 
   void dispose() {
-    // cleanup
+    _channel.setMethodCallHandler(null);
+    _listeners.clear();
   }
 }

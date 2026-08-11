@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_theme.dart';
@@ -18,13 +18,13 @@ import 'features/clipboard/services/clipboard_sync_manager.dart';
 import 'features/clipboard/services/clipboard_share_coordinator.dart';
 import 'core/services/window_visibility_service.dart';
 import 'core/services/platform_transport.dart';
+import 'core/services/crypto_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 WebSocketService? _wsService;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
   runApp(const PakkuApp());
 }
 
@@ -140,6 +140,23 @@ class _RootRouterState extends State<RootRouter> {
 
     if (Platform.isMacOS) {
       _isPaired = prefs.getBool('paired') ?? false;
+      String? hmacSecret;
+
+      if (_isPaired) {
+        try {
+          const secureStorage = FlutterSecureStorage();
+          hmacSecret = await secureStorage.read(key: 'hmacSecret');
+        } catch (e) {
+          debugPrint('Main: macOS Keychain unavailable, falling back to SharedPreferences: $e');
+          hmacSecret = prefs.getString('hmacSecret');
+        }
+        if (hmacSecret == null) {
+          // Paired but no secret — force unpair so we don't loop forever.
+          await prefs.setBool('paired', false);
+          _isPaired = false;
+        }
+      }
+
       setState(() {
         _isLoading = false;
       });
@@ -155,15 +172,23 @@ class _RootRouterState extends State<RootRouter> {
         manager.handleCallState(callId, state);
       };
 
-      ws.onConnectionChange = (connected) {
+      ws.onActionResult = (action, success, error) {
+        manager.handleActionResult(action, success, error);
+      };
+
+      ws.onConnectionChange = (connected) async {
         if (!connected && mounted) {
           setState(() {
             _sessionState = DeviceSessionState.disconnected;
           });
         }
+        // NOTE: do NOT trigger pairing here. On macOS, pairing completes only
+        // when the Android phone's device_state:connected message arrives.
       };
 
       ws.onDeviceStateChanged = (newState) async {
+        // Only transition to Home on the FIRST Android connection after QR scan.
+        // _isPaired starts false; once we set it true we never retrigger this.
         if (!_isPaired && newState == DeviceSessionState.connected) {
           await _handleInitialPairingCompletion(prefs);
         }
@@ -172,7 +197,7 @@ class _RootRouterState extends State<RootRouter> {
 
       ws.onUnpair = () async {
         await prefs.setBool('paired', false);
-        ws.disconnect();
+        ws.reset(); // Clears credentials so we don't reconnect with stale secret
         navigatorKey.currentState
             ?.pushNamedAndRemoveUntil('/', (route) => false);
       };
@@ -186,10 +211,34 @@ class _RootRouterState extends State<RootRouter> {
         }
       });
 
-      final port = dotenv.env['PAKKU_WS_PORT'] ?? '8080';
-      ws.connect('wss://127.0.0.1:$port');
+      final port = '8080';
+      
+      String? certFp;
+      try {
+        certFp = await CryptoService.certFingerprint('certs/device.der');
+      } catch (e) {
+        debugPrint('WebSocketService: Could not compute local certFp: $e');
+      }
+      
+      ws.connect('wss://127.0.0.1:$port', hmacSecret: hmacSecret, certFp: certFp);
     } else {
       _isPaired = prefs.getBool('paired') ?? false;
+      
+      if (_isPaired) {
+        const secureStorage = FlutterSecureStorage();
+        String? hmacSecret;
+        try {
+          hmacSecret = await secureStorage.read(key: 'hmacSecret');
+        } catch (e) {
+          debugPrint('Main: secure storage failed, falling back to SharedPreferences');
+          hmacSecret = prefs.getString('hmacSecret');
+        }
+        if (hmacSecret == null) {
+          await prefs.setBool('paired', false);
+          _isPaired = false;
+        }
+      }
+
       if (_isPaired) {
         try {
           const platform = MethodChannel('com.pakku.connect/platform');
@@ -437,6 +486,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 setState(() {
                                   _currentIndex = idx;
                                 });
+                                FocusManager.instance.primaryFocus?.unfocus();
                               },
                               height: 52, // smaller height
                               elevation: 0,
@@ -550,20 +600,34 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.logout),
             tooltip: 'Disconnect',
             onPressed: () async {
+              // Step 1: Clear all local paired state immediately (no network needed)
               final prefs = await SharedPreferences.getInstance();
               await prefs.setBool('paired', false);
-
-              if (Platform.isMacOS) {
-                if (context.mounted) {
-                  ws.send({'type': 'unpair'});
-                  await Future.delayed(const Duration(milliseconds: 500));
-                  ws.disconnect();
-                }
-              } else {
-                const platform = MethodChannel('com.pakku.connect/platform');
-                await platform.invokeMethod('unpair');
+              try {
+                const secureStorage = FlutterSecureStorage();
+                await secureStorage.delete(key: 'hmacSecret');
+                await secureStorage.delete(key: 'ws_ip');
+                await secureStorage.delete(key: 'ws_port');
+                await secureStorage.delete(key: 'cert_fp');
+              } catch (_) {
+                await prefs.remove('hmacSecret');
+                await prefs.remove('ws_ip');
+                await prefs.remove('ws_port');
+                await prefs.remove('cert_fp');
               }
 
+              // Step 2: Try to notify other device (best-effort, non-blocking)
+              if (Platform.isMacOS) {
+                try { ws.send({'type': 'unpair'}); } catch (_) {}
+              } else {
+                try {
+                  const platform = MethodChannel('com.pakku.connect/platform');
+                  platform.invokeMethod('unpair');
+                } catch (_) {}
+              }
+              ws.reset(); // Clears credentials so we can't reconnect with stale secret
+
+              // Step 3: Always navigate away regardless of network state
               if (context.mounted) {
                 Navigator.of(context)
                     .pushNamedAndRemoveUntil('/', (route) => false);

@@ -42,9 +42,13 @@ class ShareContent {
   /// Constructs a [ShareContent] from a JSON map.
   /// Returns null if the map is malformed.
   static ShareContent? fromJson(Map<String, dynamic> json) {
-    final encoding = json['encoding'] as String?;
+    final rawEncoding = json['encoding'];
+    if (rawEncoding is! String) return null;
+    // Only accept known encoding values; reject arbitrary strings.
+    if (rawEncoding != ShareEncoding.utf8 && rawEncoding != ShareEncoding.base64) return null;
+    final encoding = rawEncoding;
     final body     = json['body'];
-    if (encoding == null || body == null) return null;
+    if (body == null || body is! String) return null;
 
     final rawMeta = json['metadata'];
     final metadata = (rawMeta is Map)

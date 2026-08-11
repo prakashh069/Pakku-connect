@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:crypto/crypto.dart';
+import 'crypto_service.dart';
 import '../constants/message_types.dart';
 import '../models/contact.dart';
 import 'platform_transport.dart';
@@ -24,6 +26,8 @@ class WebSocketService implements PlatformTransport {
   bool _isIntentionalDisconnect = false;
   bool _paused = false;
   bool _authenticated = false;
+  String? _hmacSecret;
+  String? _certFp;
   
   bool get isConnected => _authenticated;
 
@@ -52,8 +56,14 @@ class WebSocketService implements PlatformTransport {
     this.onUnpair,
   });
 
-  void connect(String url) {
+  void connect(String url, {String? hmacSecret, String? certFp}) {
     _url = url;
+    if (hmacSecret != null) {
+      _hmacSecret = hmacSecret;
+    }
+    if (certFp != null) {
+      _certFp = certFp;
+    }
     _attempt = 0;
     _isIntentionalDisconnect = false;
     _paused = false;
@@ -63,55 +73,99 @@ class WebSocketService implements PlatformTransport {
 
   void _connectInternal() {
     if (_url == null || _paused) return;
+    // If we have no secret we can never authenticate — stop reconnecting.
+    if (_hmacSecret == null) {
+      debugPrint('WebSocketService: No hmacSecret — skipping connect.');
+      return;
+    }
     _channel?.sink.close();
 
     try {
       final client = HttpClient();
       
-      // DEV ONLY. This accepts any certificate, including a spoofed one.
-      // Production trust on macOS is established once via Keychain
-      // Access (see docs/04_IMPLEMENTATION_GUIDE.md §13).
-      // The kDebugMode gate ensures this bypass is stripped from release builds,
-      // forcing the app to rely on Keychain trust in production.
-      if (kDebugMode) {
-        client.badCertificateCallback =
-            (X509Certificate cert, String host, int port) => true;
-      }
+      // Enforce cert pinning if we have the fingerprint.
+      client.badCertificateCallback = (X509Certificate cert, String host, int port) {
+        if (_certFp != null && _certFp!.isNotEmpty) {
+          final presentedFp = sha256.convert(cert.der).toString().toLowerCase();
+          if (presentedFp == _certFp!.toLowerCase()) {
+            return true; // Pin matches
+          }
+          return false; // Pin provided but mismatch -> reject
+        }
+        if (kDebugMode) return true; // Only allow bypass in dev if no pin
+        return false; // In production, fail closed
+      };
 
       debugPrint('WebSocketService: WebSocket CONNECT');
-      _channel = IOWebSocketChannel.connect(
+      final currentChannel = IOWebSocketChannel.connect(
         Uri.parse(_url!),
         customClient: client,
         pingInterval: const Duration(seconds: 30),
       );
+      _channel = currentChannel;
 
       debugPrint('WebSocketService: WebSocket OPEN');
+      
+      // If macOS, try to provision the relay with the HMAC secret
+      if (Platform.isMacOS && _hmacSecret != null) {
+        try {
+          final tokenFile = File('/tmp/pakku.token');
+          if (tokenFile.existsSync()) {
+            final ipcToken = tokenFile.readAsStringSync();
+            debugPrint('WebSocketService: SEND set_secret');
+            currentChannel.sink.add(jsonEncode({
+              'type': 'set_secret',
+              'token': ipcToken,
+              'secret': _hmacSecret,
+            }));
+          }
+        } catch (e) {
+          debugPrint('WebSocketService: Failed to process /tmp/pakku.token: $e');
+        }
+      }
+
       debugPrint('WebSocketService: SEND hello');
-      _channel!.sink.add(jsonEncode({
+      
+      final jwt = _hmacSecret != null 
+          ? CryptoService.generateJWT(
+              hmacSecret: _hmacSecret!,
+              deviceId: Platform.isMacOS ? 'Mac' : 'Android',
+              deviceName: Platform.isMacOS ? 'Mac' : 'Unknown',
+              platform: Platform.operatingSystem,
+            )
+          : 'unprovisioned';
+
+      currentChannel.sink.add(jsonEncode({
         'type': 'hello',
         'deviceName': Platform.isMacOS ? 'Mac' : 'Unknown',
         'platform': Platform.operatingSystem,
+        'jwt': jwt,
       }));
-      _authenticated = true;
-      debugPrint('WebSocketService: Connection ready');
+      // Authentication is now strictly handled by 'auth_ack' from the relay
+      debugPrint('WebSocketService: Waiting for auth_ack');
 
-      _channel!.stream.listen(
-        _onMessage,
+      currentChannel.stream.listen(
+        (msg) {
+          if (_channel == currentChannel) {
+            _onMessage(msg);
+          }
+        },
         onError: (e, st) {
+          if (_channel != currentChannel) return;
           debugPrint('WebSocketService: Connection error: $e\n$st');
           _authenticated = false;
           onConnectionChange?.call(false);
           _scheduleReconnect();
         },
         onDone: () {
+          if (_channel != currentChannel) return;
           debugPrint('WebSocketService: Connection closed');
           _authenticated = false;
           onConnectionChange?.call(false);
           _scheduleReconnect();
         },
       );
-      _attempt = 0;
-      onConnectionChange?.call(true);
+      // Do NOT call onConnectionChange(true) here — wait for auth_ack
     } catch (e, st) {
       debugPrint('WebSocketService: Failed to connect: $e\n$st');
       _authenticated = false;
@@ -140,9 +194,15 @@ class WebSocketService implements PlatformTransport {
       } else {
         return;
       }
+      debugPrint('WebSocketService: Received payload: $payload');
       final data = jsonDecode(payload) as Map<String, dynamic>;
       final type = data['type'] as String?;
-      if (type == MessageTypes.incomingCall) {
+      if (type == 'auth_ack') {
+        _authenticated = true;
+        onConnectionChange?.call(true);
+      } else if (type == 'hello') {
+        onDeviceStateChanged?.call(DeviceSessionState.connected);
+      } else if (type == MessageTypes.incomingCall) {
         onIncomingCall?.call(
           data['callId'] as String? ?? '',
           data['phoneNumber'] as String? ?? 'Unknown',
@@ -217,6 +277,14 @@ class WebSocketService implements PlatformTransport {
     _reconnectTimer?.cancel();
     _channel?.sink.close();
     onDeviceStateChanged?.call(DeviceSessionState.disconnected);
+  }
+
+  /// Full reset: clears stored credentials and stops all reconnection attempts.
+  /// Call this on logout so the service can't reconnect with stale secrets.
+  void reset() {
+    disconnect();
+    _hmacSecret = null;
+    _url = null;
   }
 
   void pause() {

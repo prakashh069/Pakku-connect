@@ -134,8 +134,8 @@ class CallManager extends ChangeNotifier {
 
       notifyListeners();
     } else if (state == 'dialing') {
-      // Ignore duplicate
-      notifyListeners();
+      // Do not start the timer while dialing. 
+      // The UI already shows "Calling..." from the initial showCall.
     } else if (state == 'ended') {
       if (_currentCall!.state == CallState.ended) return; // duplicate
       
@@ -184,14 +184,33 @@ class CallManager extends ChangeNotifier {
   }
 
   void handleActionResult(String action, bool success, String? error) {
-    if (action == 'end_call' && !success) {
-      // Android failed to process end_call, but we are in Ending state.
+    if ((action == 'end_call' || action == 'reject_call') && !success) {
+      // Android failed to process end/reject call, but we are in Ending state.
       // We will let the timeout force the cleanup instead of leaving UI stuck.
-      lastNativeError = error ?? 'Failed to end call';
+      lastNativeError = error ?? 'Failed to $action';
       notifyListeners();
-    } else if (action == 'dial' && !success) {
-      lastNativeError = error ?? 'Failed to dial';
+    } else if (action == 'reject_call' && success) {
+      _transitionToEnded();
+    } else if ((action == 'dial' || action == 'answer_call') && !success) {
+      lastNativeError = error ?? 'Failed to $action';
       _transitionToEnded(); // Explicitly end local tracking
+    } else if (action == 'answer_call' && success) {
+      debugPrint('CallManager: handleActionResult answer_call success! Current call state: ${_currentCall?.state}');
+      if (_currentCall != null && _currentCall!.state != CallState.answeredRemotely) {
+        _currentCall!.state = CallState.answeredRemotely;
+        _stopwatch.reset(); // ADDED RESET JUST IN CASE
+        _stopwatch.start();
+        _durationTimer?.cancel();
+        callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
+
+        _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          callDuration = _stopwatch.elapsed;
+          notifyListeners();
+          callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
+        });
+
+        notifyListeners();
+      }
     }
   }
 

@@ -145,7 +145,8 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Icon(iconData, size: 14, color: iconColor),
                         const SizedBox(width: 6),

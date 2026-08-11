@@ -3,16 +3,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class CryptoService {
-  static String get _secret {
-    final s = dotenv.env['PAKKU_SECRET'];
-    if (s == null || s.isEmpty) {
-      throw Exception('PAKKU_SECRET not set in .env');
-    }
-    return s;
-  }
 
   /// Computes the SHA-256 fingerprint of the DER-encoded certificate at
   /// [derPath], as a lowercase hex string. This MUST be computed from the
@@ -27,14 +19,19 @@ class CryptoService {
   }
 
   static String generateJWT({
+    required String hmacSecret,
     required String deviceId,
     required String deviceName,
     required String platform,
     String? wsIp,
     int? wsPort,
     String? certFp,
+    bool includeSecretInPayload = false,
     Duration expiry = const Duration(minutes: 5),
   }) {
+    if (hmacSecret.isEmpty) {
+      throw ArgumentError('hmacSecret cannot be empty');
+    }
     final header = {'alg': 'HS256', 'typ': 'JWT'};
     final now = DateTime.now();
     final payload = <String, dynamic>{
@@ -52,14 +49,25 @@ class CryptoService {
     if (wsIp != null) payload['ws_ip'] = wsIp;
     if (wsPort != null) payload['ws_port'] = wsPort;
     if (certFp != null) payload['cert_fp'] = certFp;
+    if (includeSecretInPayload) payload['hmac_secret'] = hmacSecret;
 
     final h = _b64(json.encode(header));
     final p = _b64(json.encode(payload));
-    final sig = _sign('$h.$p');
+    final sig = _sign('$h.$p', hmacSecret);
     return '$h.$p.$sig';
   }
 
-  static Map<String, dynamic>? verifyJWT(String token) {
+  static Map<String, dynamic>? extractUnverifiedPayload(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      return json.decode(_unb64(parts[1])) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Map<String, dynamic>? verifyJWT(String token, String hmacSecret) {
     try {
       final parts = token.split('.');
       if (parts.length != 3) {
@@ -67,7 +75,7 @@ class CryptoService {
         return null;
       }
       
-      if (_sign('${parts[0]}.${parts[1]}') != parts[2]) {
+      if (_sign('${parts[0]}.${parts[1]}', hmacSecret) != parts[2]) {
         debugPrint('CryptoService: JWT signature mismatch');
         return null;
       }
@@ -119,8 +127,13 @@ class CryptoService {
     return base64Url.encode(bytes).replaceAll('=', '');
   }
 
-  static String _sign(String data) {
-    final digest = Hmac(sha256, utf8.encode(_secret)).convert(utf8.encode(data));
+  static String generateHmacSecret() {
+    final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+    return base64Url.encode(bytes).replaceAll('=', '');
+  }
+
+  static String _sign(String data, String secret) {
+    final digest = Hmac(sha256, utf8.encode(secret)).convert(utf8.encode(data));
     return _b64Bytes(digest.bytes);
   }
 
