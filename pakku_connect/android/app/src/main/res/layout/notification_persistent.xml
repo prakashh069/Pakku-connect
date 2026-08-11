@@ -18,20 +18,20 @@
 
         <TextView
             android:id="@+id/title"
+            style="@style/TextAppearance.Compat.Notification.Title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Connected to Mac"
             android:textStyle="bold"
-            android:textColor="?android:attr/textColorPrimary"
             android:textSize="14sp"
             android:singleLine="true" />
 
         <TextView
             android:id="@+id/text"
+            style="@style/TextAppearance.Compat.Notification.Line2"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Ready to sync clipboard"
-            android:textColor="?android:attr/textColorSecondary"
             android:textSize="12sp"
             android:singleLine="true" />
     </LinearLayout>
