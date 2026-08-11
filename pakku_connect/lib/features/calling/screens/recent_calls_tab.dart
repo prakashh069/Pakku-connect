@@ -224,7 +224,7 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
                     )
                   : _buildEmptyState(colors))
               : Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 80.0, bottom: 8.0),
                   child: Container(
                     decoration: BoxDecoration(
                       color: colors.surface,
@@ -233,7 +233,7 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
                     clipBehavior: Clip.antiAlias,
                     child: ListView.separated(
                       itemCount: history.length,
-                      padding: const EdgeInsets.only(top: 80.0, bottom: 8.0),
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
                       separatorBuilder: (context, index) => Divider(
                         color: colors.background, // Divider color matching background to blend in
                         height: 1,
