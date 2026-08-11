@@ -305,8 +305,8 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
               const SizedBox(height: 48),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Text("Don't have a Pakku Connect account? ", style: TextStyle(color: Colors.black87)),
+                children: [
+                  const Text("Don't have a Pakku Connect account? ", style: TextStyle(color: Colors.black87)),
                   Text("Get started ↗", style: TextStyle(color: colors.success, fontWeight: FontWeight.bold, decoration: TextDecoration.underline, decorationColor: colors.success)),
                 ],
               ),
