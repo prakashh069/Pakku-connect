@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AppPalette {
   static const pitchBlack = Color(0xFF000000);
   static const vibrantTeal = Color(0xFF14B8A6);
-  static const darkSurface = Color(0xFF121212);
+  static const darkSurface = Color(0xFF1E1E1E);
   static const lightText = Color(0xFFCED5DE);
   static const successGreen = Color(0xFF22C55E);
   static const dangerRed = Color(0xFFFF3B30);
