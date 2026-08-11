@@ -335,11 +335,13 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
             ],
           ),
           const SizedBox(width: 16),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24.0),
-            child: Text(
-              text,
-              style: const TextStyle(fontSize: 18, color: Colors.black87),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: Text(
+                text,
+                style: const TextStyle(fontSize: 16, color: Colors.black87),
+              ),
             ),
           ),
         ],
