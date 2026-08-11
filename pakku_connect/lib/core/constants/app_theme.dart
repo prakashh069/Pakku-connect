@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 class AppPalette {
-  static const quantumCharcoal = Color(0xFF161B22);
+  static const pitchBlack = Color(0xFF000000);
   static const vibrantTeal = Color(0xFF14B8A6);
-  static const interfaceGray = Color(0xFF30363D);
+  static const darkSurface = Color(0xFF121212);
   static const lightText = Color(0xFFCED5DE);
   static const successGreen = Color(0xFF22C55E);
   static const dangerRed = Color(0xFFFF3B30);
@@ -64,8 +64,8 @@ class CustomColors extends ThemeExtension<CustomColors> {
   }
 
   static const dark = CustomColors(
-    background: AppPalette.quantumCharcoal,
-    surface: AppPalette.interfaceGray,
+    background: AppPalette.pitchBlack,
+    surface: AppPalette.darkSurface,
     accent: AppPalette.vibrantTeal,
     onAccent: Colors.white,
     danger: AppPalette.dangerRed,
@@ -87,7 +87,7 @@ class CustomColors extends ThemeExtension<CustomColors> {
 ThemeData buildAppTheme({bool isDark = true}) {
   return isDark
     ? ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: AppPalette.quantumCharcoal,
+        scaffoldBackgroundColor: AppPalette.pitchBlack,
         primaryColor: AppPalette.vibrantTeal,
         extensions: const [CustomColors.dark],
       )
