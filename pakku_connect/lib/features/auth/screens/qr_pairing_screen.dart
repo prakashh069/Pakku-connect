@@ -193,11 +193,11 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                                 onPressed: _generating ? null : () => _generateQR(forceNew: true),
                                 style: TextButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                  backgroundColor: colors.primary.withOpacity(0.1),
+                                  backgroundColor: colors.accent.withOpacity(0.1),
                                 ),
                                 child: Text(
                                   'Generate New Code',
-                                  style: TextStyle(color: colors.primary, fontWeight: FontWeight.bold),
+                                  style: TextStyle(color: colors.accent, fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ],
