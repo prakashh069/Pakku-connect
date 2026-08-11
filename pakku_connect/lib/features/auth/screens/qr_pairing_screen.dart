@@ -259,27 +259,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                 ),
               ),
 
-              // Footer Text
-              const SizedBox(height: 48),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text("Don't have a Pakku Connect account? ", style: TextStyle(color: textColor)),
-                  Text("Get started ↗", style: TextStyle(color: colors.success, fontWeight: FontWeight.bold, decoration: TextDecoration.underline, decorationColor: colors.success)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.lock_outline, size: 16, color: subTextColor),
-                  const SizedBox(width: 8),
-                  Text("Your personal messages are end-to-end encrypted", style: TextStyle(color: subTextColor)),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text("Terms & Privacy Policy", style: TextStyle(color: subTextColor, fontSize: 12)),
-              const SizedBox(height: 48),
+
             ],
           ),
         ),
