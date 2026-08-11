@@ -1086,10 +1086,12 @@ class PhoneStateService : Service() {
         stopWebSocket()
         
         // Explicitly clean up singleton OkHttpClient
-        httpClient?.let {
-            it.dispatcher.cancelAll()
-            it.dispatcher.executorService.shutdown()
-            it.connectionPool.evictAll()
+        httpClient?.let { client ->
+            Thread {
+                client.dispatcher.cancelAll()
+                client.dispatcher.executorService.shutdown()
+                client.connectionPool.evictAll()
+            }.start()
         }
         httpClient = null
 
