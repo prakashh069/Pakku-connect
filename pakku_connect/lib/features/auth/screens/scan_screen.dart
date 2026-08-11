@@ -139,10 +139,7 @@ class _ScanScreenState extends State<ScanScreen> {
     final colors = Theme.of(context).extension<CustomColors>()!;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
-        centerTitle: true,
-        title: Image.asset('assets/images/app_logo.png', height: 32),
-      ),
+      appBar: AppBar(title: const Text('Scan QR Code')),
       body: Stack(
         children: [
           MobileScanner(
