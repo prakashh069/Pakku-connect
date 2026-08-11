@@ -120,46 +120,47 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // Header Logo
-              Padding(
-                padding: const EdgeInsets.fromLTRB(40, 28, 40, 0),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.asset('assets/images/app_logo.png', width: 32, height: 32),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Pakku Connect',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: colors.success, // Use green color
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 1040),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Logo
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(32, 48, 32, 0),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset('assets/images/app_logo.png', width: 32, height: 32),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      Text(
+                        'Pakku Connect',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: colors.success, // Use green color
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 32),
+                const SizedBox(height: 40),
 
-
-              // Main Card
-              Container(
-                constraints: const BoxConstraints(maxWidth: 900),
-                margin: const EdgeInsets.symmetric(horizontal: 32),
-                padding: const EdgeInsets.all(48),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: borderColor, width: 1),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                // Main Card
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 32),
+                  padding: const EdgeInsets.all(48),
+                  decoration: BoxDecoration(
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: borderColor, width: 1),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     // Left Side - Instructions
                     Expanded(
                       child: Column(
@@ -191,27 +192,19 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                             ),
                           ),
 
-                          const SizedBox(height: 48),
+                          const SizedBox(height: 24),
                           
-                          Wrap(
-                            alignment: WrapAlignment.spaceBetween,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            spacing: 16,
-                            runSpacing: 16,
-                            children: [
-                              InkWell(
-                                onTap: _generating ? null : () => _generateQR(forceNew: true),
-                                child: Text(
-                                  'Generate new code >',
-                                  style: TextStyle(
-                                    color: textColor,
-                                    fontWeight: FontWeight.w500,
-                                    decoration: TextDecoration.underline,
-                                    decorationColor: textColor,
-                                  ),
-                                ),
+                          InkWell(
+                            onTap: _generating ? null : () => _generateQR(forceNew: true),
+                            child: Text(
+                              'Generate new code >',
+                              style: TextStyle(
+                                color: textColor,
+                                fontWeight: FontWeight.w500,
+                                decoration: TextDecoration.underline,
+                                decorationColor: textColor,
                               ),
-                            ],
+                            ),
                           ),
                           if (_error != null) ...[
                              const SizedBox(height: 16),
@@ -226,18 +219,18 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                     // Right Side - QR Code
                     if (_qrData != null)
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: QrImageView(
                           data: _qrData!,
-                          size: 300,
+                          size: 264,
                           backgroundColor: Colors.white,
                           embeddedImage: const AssetImage('assets/images/app_logo.png'),
                           embeddedImageStyle: const QrEmbeddedImageStyle(
-                            size: Size(64, 64),
+                            size: Size(56, 56),
                           ),
                           eyeStyle: const QrEyeStyle(
                             eyeShape: QrEyeShape.square,
@@ -258,14 +251,13 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                   ],
                 ),
               ),
-
-
             ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStepsList(Color textColor, Color borderColor) {
     return Column(
