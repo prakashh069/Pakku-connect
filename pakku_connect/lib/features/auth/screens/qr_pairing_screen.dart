@@ -141,51 +141,10 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
               ),
               const SizedBox(height: 32),
 
-              // "Download" Banner
-              Container(
-                width: 900,
-                margin: const EdgeInsets.symmetric(horizontal: 32),
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black12, width: 1),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.devices, size: 48, color: Colors.black87),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('Download Pakku Connect for Mac', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
-                          SizedBox(height: 4),
-                          Text('Make calls and get a faster experience when you download the Mac app.', style: TextStyle(fontSize: 14, color: Colors.black54)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                    ElevatedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.download, size: 16, color: Colors.black87),
-                      label: const Text('Download', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colors.success, // Green
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
 
               // Main Card
               Container(
-                width: 900,
+                constraints: const BoxConstraints(maxWidth: 900),
                 margin: const EdgeInsets.symmetric(horizontal: 32),
                 padding: const EdgeInsets.all(48),
                 decoration: BoxDecoration(
@@ -229,10 +188,14 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
 
                           const SizedBox(height: 48),
                           
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 16,
+                            runSpacing: 16,
                             children: [
                               Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(Icons.check_box, color: colors.success, size: 20),
                                   const SizedBox(width: 12),
