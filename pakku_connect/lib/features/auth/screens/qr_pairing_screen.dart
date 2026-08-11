@@ -110,79 +110,170 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<CustomColors>()!;
+    final bgColor = const Color(0xFFF9F7F4); // Light beige background
+
     return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        title: const Text('Pakku Connect — Pair'),
-        backgroundColor: colors.surface,
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(32),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
+      backgroundColor: bgColor,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Left Logo Area
+            Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset('assets/images/app_logo.png', width: 32, height: 32),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Pakku Connect',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(32),
-                  child: Image.asset(
-                    'assets/images/app_logo.png', 
-                    width: 160, 
-                    height: 160,
-                    fit: BoxFit.cover, // Ensures it is tight and filled
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 36),
-              if (_qrData != null)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: QrImageView(
-                    data: _qrData!,
-                    size: 350,
-                    backgroundColor: Colors.white,
-                  ),
-              )
-            else
-              const CircularProgressIndicator(),
-            const SizedBox(height: 28),
-            Text(
-              'Scan this QR with the Android app',
-              style: TextStyle(color: colors.lightText, fontSize: 16),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: colors.danger, fontSize: 12),
-                  textAlign: TextAlign.center,
+            // Main Card
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Container(
+                    width: 900,
+                    margin: const EdgeInsets.symmetric(horizontal: 32),
+                    padding: const EdgeInsets.all(48),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left Side - Instructions
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Scan to log in',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w300,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                              const SizedBox(height: 40),
+                              _buildStep(1, 'Open Pakku Connect on your phone'),
+                              const SizedBox(height: 24),
+                              _buildStep(2, 'Tap the scan button to open the camera'),
+                              const SizedBox(height: 24),
+                              _buildStep(3, 'Point your phone to this screen to pair'),
+                              const SizedBox(height: 48),
+                              if (_error != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 24),
+                                  child: Text(
+                                    _error!,
+                                    style: TextStyle(color: colors.danger, fontSize: 14),
+                                  ),
+                                ),
+                              TextButton(
+                                onPressed: _generating ? null : () => _generateQR(forceNew: true),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                  backgroundColor: colors.primary.withOpacity(0.1),
+                                ),
+                                child: Text(
+                                  'Generate New Code',
+                                  style: TextStyle(color: colors.primary, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Right Side - QR Code
+                        const SizedBox(width: 48),
+                        if (_qrData != null)
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: QrImageView(
+                              data: _qrData!,
+                              size: 300,
+                              backgroundColor: Colors.white,
+                              embeddedImage: const AssetImage('assets/images/app_logo.png'),
+                              embeddedImageStyle: const QrEmbeddedImageStyle(
+                                size: Size(64, 64),
+                              ),
+                              eyeStyle: const QrEyeStyle(
+                                eyeShape: QrEyeShape.square,
+                                color: Colors.black87,
+                              ),
+                              dataModuleStyle: const QrDataModuleStyle(
+                                dataModuleShape: QrDataModuleShape.square,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          )
+                        else
+                          const SizedBox(
+                            width: 332,
+                            height: 332,
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ],
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: _generating ? null : () => _generateQR(forceNew: true),
-              child: const Text('Generate New Code'),
             ),
           ],
         ),
-        ),
       ),
+    );
+  }
+
+  Widget _buildStep(int number, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.black54),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              number.toString(),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black54),
+            ),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 18, color: Colors.black87, height: 1.3),
+          ),
+        ),
+      ],
     );
   }
 }
