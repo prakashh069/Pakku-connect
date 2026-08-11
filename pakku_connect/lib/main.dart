@@ -531,7 +531,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pakku Connect'),
+        centerTitle: true,
+        title: Image.asset('assets/images/app_logo.png', height: 32),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),

@@ -113,7 +113,8 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: const Text('Pakku Connect — Pair'),
+        centerTitle: true,
+        title: Image.asset('assets/images/app_logo.png', height: 32),
         backgroundColor: colors.surface,
       ),
       body: Center(
@@ -121,8 +122,6 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset('assets/images/app_logo.png', width: 120, height: 120),
-              const SizedBox(height: 32),
               if (_qrData != null)
                 Container(
                   padding: const EdgeInsets.all(16),
