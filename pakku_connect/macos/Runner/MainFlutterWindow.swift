@@ -7,7 +7,10 @@ class MainFlutterWindow: NSWindow {
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
-    
+    // Make the title bar pitch black to match the app theme
+    self.backgroundColor = NSColor.black
+    self.titlebarAppearsTransparent = true
+
     // Prevent the window from being deallocated when closed
     self.isReleasedWhenClosed = false
 
