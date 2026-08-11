@@ -110,14 +110,9 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<CustomColors>()!;
-    // In dark mode we use the theme's background. In light mode we use the theme's background as well.
-    final bgColor = colors.background;
-    final primaryTextColor = colors.lightText;
-    final secondaryTextColor = colors.lightText.withOpacity(0.7);
-    final borderColor = colors.lightText.withOpacity(0.15);
-
+    
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: colors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
@@ -137,7 +132,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: colors.success, 
+                        color: colors.success, // Use green color
                       ),
                     ),
                   ],
@@ -153,29 +148,29 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                 decoration: BoxDecoration(
                   color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: borderColor, width: 1),
+                  border: Border.all(color: colors.border, width: 1),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.devices, size: 48, color: primaryTextColor),
+                    Icon(Icons.devices, size: 48, color: colors.textMain),
                     const SizedBox(width: 24),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Download Pakku Connect for Mac', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: primaryTextColor)),
+                          Text('Download Pakku Connect for Mac', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colors.textMain)),
                           const SizedBox(height: 4),
-                          Text('Make calls and get a faster experience when you download the Mac app.', style: TextStyle(fontSize: 14, color: secondaryTextColor)),
+                          Text('Make calls and get a faster experience when you download the Mac app.', style: TextStyle(fontSize: 14, color: colors.textSecondary)),
                         ],
                       ),
                     ),
                     const SizedBox(width: 24),
                     ElevatedButton.icon(
                       onPressed: () {},
-                      icon: const Icon(Icons.download, size: 16, color: Colors.white),
-                      label: const Text('Download', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      icon: Icon(Icons.download, size: 16, color: colors.onAccent),
+                      label: Text('Download', style: TextStyle(color: colors.onAccent, fontWeight: FontWeight.bold)),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: colors.success, 
+                        backgroundColor: colors.success, // Green
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -195,7 +190,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                 decoration: BoxDecoration(
                   color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: borderColor, width: 1),
+                  border: Border.all(color: colors.border, width: 1),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,7 +204,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                             'Scan to log in',
                             style: TextStyle(
                               fontSize: 28,
-                              color: primaryTextColor,
+                              color: colors.textMain,
                             ),
                           ),
                           const SizedBox(height: 40),
@@ -223,10 +218,10 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                             child: Text(
                               'Need help? ↗',
                               style: TextStyle(
-                                color: primaryTextColor,
+                                color: colors.textMain,
                                 fontWeight: FontWeight.w500,
                                 decoration: TextDecoration.underline,
-                                decorationColor: primaryTextColor,
+                                decorationColor: colors.textMain,
                               ),
                             ),
                           ),
@@ -240,9 +235,9 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                                 children: [
                                   Icon(Icons.check_box, color: colors.success, size: 20),
                                   const SizedBox(width: 12),
-                                  Text('Stay logged in on this browser', style: TextStyle(color: primaryTextColor, fontWeight: FontWeight.w500)),
+                                  Text('Stay logged in on this browser', style: TextStyle(color: colors.textMain, fontWeight: FontWeight.w500)),
                                   const SizedBox(width: 4),
-                                  Icon(Icons.info_outline, size: 16, color: secondaryTextColor),
+                                  Icon(Icons.info_outline, size: 16, color: colors.textSecondary),
                                 ],
                               ),
                               InkWell(
@@ -250,10 +245,10 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                                 child: Text(
                                   'Generate new code >',
                                   style: TextStyle(
-                                    color: primaryTextColor,
+                                    color: colors.textMain,
                                     fontWeight: FontWeight.w500,
                                     decoration: TextDecoration.underline,
-                                    decorationColor: primaryTextColor,
+                                    decorationColor: colors.textMain,
                                   ),
                                 ),
                               ),
@@ -274,24 +269,24 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white, // Keep QR background white for scannability
+                          color: Colors.white, // Keep QR background solid white so it can be scanned easily
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: QrImageView(
                           data: _qrData!,
                           size: 300,
-                          backgroundColor: Colors.white,
+                          backgroundColor: Colors.white, // Always white for contrast
                           embeddedImage: const AssetImage('assets/images/app_logo.png'),
                           embeddedImageStyle: const QrEmbeddedImageStyle(
                             size: Size(64, 64),
                           ),
                           eyeStyle: const QrEyeStyle(
                             eyeShape: QrEyeShape.square,
-                            color: Colors.black87,
+                            color: Colors.black,
                           ),
                           dataModuleStyle: const QrDataModuleStyle(
                             dataModuleShape: QrDataModuleShape.square,
-                            color: Colors.black87,
+                            color: Colors.black,
                           ),
                         ),
                       )
@@ -310,7 +305,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text("Don't have a Pakku Connect account? ", style: TextStyle(color: primaryTextColor)),
+                  Text("Don't have a Pakku Connect account? ", style: TextStyle(color: colors.textMain)),
                   Text("Get started ↗", style: TextStyle(color: colors.success, fontWeight: FontWeight.bold, decoration: TextDecoration.underline, decorationColor: colors.success)),
                 ],
               ),
@@ -318,13 +313,13 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.lock_outline, size: 16, color: secondaryTextColor),
+                  Icon(Icons.lock_outline, size: 16, color: colors.textSecondary),
                   const SizedBox(width: 8),
-                  Text("Your personal messages are end-to-end encrypted", style: TextStyle(color: secondaryTextColor)),
+                  Text("Your personal messages are end-to-end encrypted", style: TextStyle(color: colors.textSecondary)),
                 ],
               ),
               const SizedBox(height: 24),
-              Text("Terms & Privacy Policy", style: TextStyle(color: secondaryTextColor, fontSize: 12)),
+              Text("Terms & Privacy Policy", style: TextStyle(color: colors.textSecondary, fontSize: 12)),
               const SizedBox(height: 48),
             ],
           ),
@@ -337,14 +332,14 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildStepItem(1, 'Open Pakku Connect on your phone', hasLine: true, colors: colors),
-        _buildStepItem(2, 'Tap the scan button to open the camera', hasLine: true, colors: colors),
-        _buildStepItem(3, 'Point your phone to this screen to pair', hasLine: false, colors: colors),
+        _buildStepItem(1, 'Open Pakku Connect on your phone', colors: colors, hasLine: true),
+        _buildStepItem(2, 'Tap the scan button to open the camera', colors: colors, hasLine: true),
+        _buildStepItem(3, 'Point your phone to this screen to pair', colors: colors, hasLine: false),
       ],
     );
   }
 
-  Widget _buildStepItem(int number, String text, {required bool hasLine, required CustomColors colors}) {
+  Widget _buildStepItem(int number, String text, {required CustomColors colors, required bool hasLine}) {
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -355,13 +350,13 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  border: Border.all(color: colors.lightText.withOpacity(0.5)),
+                  border: Border.all(color: colors.borderStrong),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
                     number.toString(),
-                    style: TextStyle(fontSize: 12, color: colors.lightText),
+                    style: TextStyle(fontSize: 12, color: colors.textMain),
                   ),
                 ),
               ),
@@ -370,7 +365,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                   child: Container(
                     width: 1,
                     margin: const EdgeInsets.symmetric(vertical: 4),
-                    color: colors.lightText.withOpacity(0.2),
+                    color: colors.border,
                   ),
                 ),
             ],
@@ -380,7 +375,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
             padding: const EdgeInsets.only(bottom: 24.0),
             child: Text(
               text,
-              style: TextStyle(fontSize: 18, color: colors.lightText),
+              style: TextStyle(fontSize: 18, color: colors.textMain),
             ),
           ),
         ],

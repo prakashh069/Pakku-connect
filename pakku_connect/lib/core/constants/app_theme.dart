@@ -17,6 +17,10 @@ class CustomColors extends ThemeExtension<CustomColors> {
   final Color danger;
   final Color success;
   final Color lightText;
+  final Color textMain;
+  final Color textSecondary;
+  final Color border;
+  final Color borderStrong;
 
   const CustomColors({
     required this.background,
@@ -26,6 +30,10 @@ class CustomColors extends ThemeExtension<CustomColors> {
     required this.danger,
     required this.success,
     required this.lightText,
+    required this.textMain,
+    required this.textSecondary,
+    required this.border,
+    required this.borderStrong,
   });
 
   @override
@@ -37,6 +45,10 @@ class CustomColors extends ThemeExtension<CustomColors> {
     Color? danger,
     Color? success,
     Color? lightText,
+    Color? textMain,
+    Color? textSecondary,
+    Color? border,
+    Color? borderStrong,
   }) {
     return CustomColors(
       background: background ?? this.background,
@@ -46,6 +58,10 @@ class CustomColors extends ThemeExtension<CustomColors> {
       danger: danger ?? this.danger,
       success: success ?? this.success,
       lightText: lightText ?? this.lightText,
+      textMain: textMain ?? this.textMain,
+      textSecondary: textSecondary ?? this.textSecondary,
+      border: border ?? this.border,
+      borderStrong: borderStrong ?? this.borderStrong,
     );
   }
 
@@ -60,6 +76,10 @@ class CustomColors extends ThemeExtension<CustomColors> {
       danger: Color.lerp(danger, other.danger, t)!,
       success: Color.lerp(success, other.success, t)!,
       lightText: Color.lerp(lightText, other.lightText, t)!,
+      textMain: Color.lerp(textMain, other.textMain, t)!,
+      textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
+      border: Color.lerp(border, other.border, t)!,
+      borderStrong: Color.lerp(borderStrong, other.borderStrong, t)!,
     );
   }
 
@@ -71,16 +91,24 @@ class CustomColors extends ThemeExtension<CustomColors> {
     danger: AppPalette.dangerRed,
     success: AppPalette.successGreen,
     lightText: AppPalette.lightText,
+    textMain: Colors.white,
+    textSecondary: Colors.white70,
+    border: Colors.white12,
+    borderStrong: Colors.white30,
   );
 
   static const light = CustomColors(
-    background: Color(0xFFF2F2F6), // iOS/OneUI light background
+    background: Color(0xFFF9F6F0), // WhatsApp web light background
     surface: Colors.white,
     accent: AppPalette.vibrantTeal,
     onAccent: Colors.white,
     danger: AppPalette.dangerRed,
     success: AppPalette.successGreen,
-    lightText: Color(0xFF1C1C1E), // Dark text for light mode
+    lightText: Color(0xFF1C1C1E),
+    textMain: Colors.black87,
+    textSecondary: Colors.black54,
+    border: Colors.black12,
+    borderStrong: Colors.black38,
   );
 }
 
@@ -92,7 +120,7 @@ ThemeData buildAppTheme({bool isDark = true}) {
         extensions: const [CustomColors.dark],
       )
     : ThemeData.light().copyWith(
-        scaffoldBackgroundColor: const Color(0xFFF2F2F6),
+        scaffoldBackgroundColor: const Color(0xFFF9F6F0),
         primaryColor: AppPalette.vibrantTeal,
         extensions: const [CustomColors.light],
       );
