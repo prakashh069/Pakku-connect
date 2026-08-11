@@ -399,8 +399,8 @@ class _HomeScreenState extends State<HomeScreen> {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Text(statusText,
-                style: const TextStyle(
-                    color: Colors.black,
+                style: TextStyle(
+                    color: colors.lightText,
                     fontWeight: FontWeight.bold,
                     fontSize: 14)),
           ),
