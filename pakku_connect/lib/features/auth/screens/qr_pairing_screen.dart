@@ -120,10 +120,12 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 1040),
-            child: Column(
+        child: SingleChildScrollView(
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.only(bottom: 48), // Add some bottom padding
+              constraints: const BoxConstraints(maxWidth: 1040),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header Logo
@@ -256,7 +258,8 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
         ),
       ),
     ),
-  );
+  ),
+);
 }
 
   Widget _buildStepsList(Color textColor, Color borderColor) {
