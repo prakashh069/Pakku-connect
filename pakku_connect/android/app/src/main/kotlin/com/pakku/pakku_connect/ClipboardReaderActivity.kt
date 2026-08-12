@@ -55,7 +55,7 @@ class ClipboardReaderActivity : Activity() {
                 if (item.uri != null) {
                     imageUri = item.uri
                 } else {
-                    textToSend = item.text?.toString()
+                    textToSend = item.coerceToText(this).toString()
                 }
             }
             processAndSend(textToSend, imageUri)
