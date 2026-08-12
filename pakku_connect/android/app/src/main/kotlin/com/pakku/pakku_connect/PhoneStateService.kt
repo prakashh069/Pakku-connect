@@ -156,7 +156,7 @@ class PhoneStateService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_call)
-            .setContentTitle("Pakku Connect")
+            .setContentTitle("Connecto")
             .setContentText("Connected to Mac")
             .setCustomContentView(remoteViews)
             .setCustomBigContentView(remoteViews)

@@ -70,7 +70,7 @@ class PakkuApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'Pakku Connect',
+        title: 'Connecto',
         debugShowCheckedModeBanner: false,
         navigatorKey: navigatorKey,
         theme: buildAppTheme(isDark: false),
@@ -330,7 +330,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Pakku Connect Active',
+              'Connecto Active',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,

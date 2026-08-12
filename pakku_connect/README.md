@@ -1,6 +1,6 @@
-# Pakku Connect 📱💻
+# Connecto 📱💻
 
-Pakku Connect is a secure, cross-platform companion application that seamlessly bridges your Android smartphone and your macOS desktop. By operating entirely over your local network, it brings your phone's contacts, live caller ID, and connection status directly to your Mac without relying on third-party cloud servers.
+Connecto is a secure, cross-platform companion application that seamlessly bridges your Android smartphone and your macOS desktop. By operating entirely over your local network, it brings your phone's contacts, live caller ID, and connection status directly to your Mac without relying on third-party cloud servers.
 
 ## ✨ Features
 
@@ -12,7 +12,7 @@ Pakku Connect is a secure, cross-platform companion application that seamlessly 
 
 ## 🏗️ Architecture
 
-Pakku Connect is built with a unified Flutter codebase for both platforms, backed by a local Node.js relay server:
+Connecto is built with a unified Flutter codebase for both platforms, backed by a local Node.js relay server:
 
 1. **Android Companion App:** Acts as the data provider. It runs a robust background foreground service (`PhoneStateService.kt`) that monitors Android telephony events and reads the local contact database.
 2. **macOS Desktop Client:** Acts as the consumer and UI surface. It provides a polished, highly-responsive dark-mode interface optimized for keyboard/mouse interaction.

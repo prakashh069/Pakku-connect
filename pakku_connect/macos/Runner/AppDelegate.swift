@@ -72,7 +72,7 @@ class AppDelegate: FlutterAppDelegate {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     
     if let button = statusItem?.button {
-      button.title = "Pakku Connect"
+      button.title = "Connecto"
     }
     
     let menu = NSMenu()
@@ -82,13 +82,13 @@ class AppDelegate: FlutterAppDelegate {
     menu.addItem(statusMenuItem!)
     
     menu.addItem(NSMenuItem.separator())
-    menu.addItem(NSMenuItem(title: "Open Pakku Connect", action: #selector(openApp), keyEquivalent: "o"))
+    menu.addItem(NSMenuItem(title: "Open Connecto", action: #selector(openApp), keyEquivalent: "o"))
     
     toggleConnectionMenuItem = NSMenuItem(title: "Pause Connection", action: #selector(toggleConnection), keyEquivalent: "p")
     menu.addItem(toggleConnectionMenuItem!)
     
     menu.addItem(NSMenuItem.separator())
-    menu.addItem(NSMenuItem(title: "Quit Pakku Connect", action: #selector(quitApp), keyEquivalent: "q"))
+    menu.addItem(NSMenuItem(title: "Quit Connecto", action: #selector(quitApp), keyEquivalent: "q"))
     
     statusItem?.menu = menu
     updateMenuBarStatus(state: "disconnected")

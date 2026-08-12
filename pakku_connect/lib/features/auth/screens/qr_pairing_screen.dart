@@ -222,7 +222,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                           data: _qrData!,
                           size: 264,
                           backgroundColor: Colors.white,
-                          embeddedImage: const AssetImage('assets/images/app_logo.png'),
+                          embeddedImage: const AssetImage('assets/images/connecto_logo_light.png'),
                           embeddedImageStyle: const QrEmbeddedImageStyle(
                             size: Size(56, 56),
                           ),
@@ -257,7 +257,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildStepItem(1, 'Open Pakku Connect on your phone', hasLine: true, textColor: textColor, borderColor: borderColor),
+        _buildStepItem(1, 'Open Connecto on your phone', hasLine: true, textColor: textColor, borderColor: borderColor),
         _buildStepItem(2, 'Tap the scan button to open the camera', hasLine: true, textColor: textColor, borderColor: borderColor),
         _buildStepItem(3, 'Point your phone to this screen to pair', hasLine: false, textColor: textColor, borderColor: borderColor),
       ],
