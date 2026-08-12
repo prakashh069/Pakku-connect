@@ -222,7 +222,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                           data: _qrData!,
                           size: 264,
                           backgroundColor: Colors.white,
-                          embeddedImage: const AssetImage('assets/images/connecto_logo_light.png'),
+                          embeddedImage: const AssetImage('assets/images/app_logo.png'),
                           embeddedImageStyle: const QrEmbeddedImageStyle(
                             size: Size(56, 56),
                           ),

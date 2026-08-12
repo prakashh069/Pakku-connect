@@ -46,7 +46,7 @@ flutter run -d <your-android-device-id>
 
 ### 4. Pair Devices
 1. The macOS app will display a QR code on the first launch.
-2. Open the Pakku Connect app on your Android phone and scan the QR code to pair the devices.
+2. Open the Connecto app on your Android phone and scan the QR code to pair the devices.
 3. Once paired, the Android app will transition to a background service, and the macOS app will open the main dashboard and sync your contacts.
 
 ## 🛠️ Tech Stack
