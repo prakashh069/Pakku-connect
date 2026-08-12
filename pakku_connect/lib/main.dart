@@ -454,10 +454,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     Positioned.fill(
                       child: IndexedStack(
                         index: _currentIndex,
-                        children: const [
-                          KeypadTab(),
-                          RecentCallsTab(),
-                          ContactsTab(),
+                        children: [
+                          KeypadTab(isActive: _currentIndex == 0),
+                          const RecentCallsTab(),
+                          const ContactsTab(),
                         ],
                       ),
                     ),
@@ -486,7 +486,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 setState(() {
                                   _currentIndex = idx;
                                 });
-                                FocusManager.instance.primaryFocus?.unfocus();
+                                if (idx != 0) {
+                                  FocusManager.instance.primaryFocus?.unfocus();
+                                }
                               },
                               height: 52, // smaller height
                               elevation: 0,

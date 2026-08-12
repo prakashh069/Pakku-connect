@@ -6,7 +6,8 @@ import 'package:pakku_connect/features/calling/services/call_manager.dart';
 import 'package:pakku_connect/core/services/websocket_service.dart';
 
 class KeypadTab extends StatefulWidget {
-  const KeypadTab({super.key});
+  final bool isActive;
+  const KeypadTab({super.key, this.isActive = true});
 
   @override
   State<KeypadTab> createState() => _KeypadTabState();
@@ -19,6 +20,19 @@ class _KeypadTabState extends State<KeypadTab> {
   @override
   void initState() {
     super.initState();
+    if (widget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _focusNode.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(KeypadTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _focusNode.requestFocus();
+    }
   }
 
   @override
