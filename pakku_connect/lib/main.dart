@@ -528,10 +528,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<CustomColors>()!;
     final ws = context.watch<WebSocketService>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final logoAsset = isDark
+        ? 'assets/images/connecto_logo_dark.png'
+        : 'assets/images/connecto_logo_light.png';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pakku Connect'),
+        title: Image.asset(
+          logoAsset,
+          height: 32,
+          fit: BoxFit.contain,
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),

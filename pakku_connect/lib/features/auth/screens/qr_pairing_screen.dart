@@ -130,22 +130,15 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                 // Header Logo
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset('assets/images/app_logo.png', width: 32, height: 32),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Pakku Connect',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: colors.success, // Use green color
-                        ),
-                      ),
-                    ],
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Image.asset(
+                      Theme.of(context).brightness == Brightness.dark
+                          ? 'assets/images/connecto_logo_dark.png'
+                          : 'assets/images/connecto_logo_light.png',
+                      height: 40,
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 40),
