@@ -314,6 +314,65 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 2; // Default to Contacts
+  Map<String, dynamic>? _batteryData;
+  String _phoneMode = 'normal';
+  String _previousPhoneMode = 'normal';
+  bool _phoneModeUpdating = false;
+  bool _flashlightOn = false;
+  bool _isRinging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ws = context.read<WebSocketService>();
+      ws.onBatteryStatus = (data) {
+        if (mounted) {
+          setState(() {
+            _batteryData = data;
+          });
+        }
+      };
+      ws.onDeviceState = (data) {
+        if (mounted) {
+          setState(() {
+            if (data['ringing'] != null) _isRinging = data['ringing'] == true;
+            if (data['flashlight'] != null) _flashlightOn = data['flashlight'] == true;
+          });
+        }
+      };
+      ws.onActionStatus = (action, status, error, data) {
+        if (!mounted) return;
+        if (action == 'ring') {
+          if (status == 'success' && data['enabled'] != null) {
+            setState(() {
+              _isRinging = data['enabled'] == true;
+            });
+          }
+        } else if (action == 'flashlight') {
+          if (status == 'success' && data['enabled'] != null) {
+            setState(() {
+              _flashlightOn = data['enabled'] == true;
+            });
+          }
+        } else if (action == 'set_ringer_mode') {
+          if (status == 'permission_required') {
+            setState(() { _phoneMode = _previousPhoneMode; _phoneModeUpdating = false; });
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Grant Do Not Disturb access on your phone.')));
+          } else if (status == 'success') {
+            setState(() => _phoneModeUpdating = false);
+          } else {
+            setState(() { _phoneMode = _previousPhoneMode; _phoneModeUpdating = false; });
+          }
+        } else if (action == 'lock' && status == 'permission_required') {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enable Device Admin on your phone.')));
+        } else if (status == 'error') {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $error')));
+        }
+      };
+    });
+  }
 
   Widget _buildAndroidLayout(
       BuildContext context, CustomColors colors, WebSocketService ws) {
@@ -389,28 +448,227 @@ class _HomeScreenState extends State<HomeScreen> {
             : '🔴 Offline');
     final contactCount = ws.cachedContacts.length;
 
-    return Container(
-      color: colors.background.withAlpha(240),
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
+    Widget batteryWidget = const SizedBox();
+    if (_batteryData != null) {
+      final level = _batteryData!['level'] as int? ?? 0;
+      final charging = _batteryData!['charging'] as bool? ?? false;
+      final temp = _batteryData!['temperature'] as num? ?? 0;
+      final rawHealth = _batteryData!['health'] as String? ?? 'unknown';
+      final health = rawHealth.isNotEmpty ? '${rawHealth[0].toUpperCase()}${rawHealth.substring(1)}' : 'Unknown';
+
+      final barColor = level > 30 ? Colors.green : (level > 15 ? Colors.orange : Colors.red);
+
+      batteryWidget = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(statusText,
-                style: TextStyle(
-                    color: colors.lightText,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14)),
+          const Text('🔋 Battery', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: level / 100.0,
+                    minHeight: 12,
+                    backgroundColor: colors.surface,
+                    valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('$level%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            ],
           ),
+          if (charging) ...[
+            const SizedBox(height: 4),
+            const Text('⚡ Charging', style: TextStyle(fontSize: 12, color: Colors.green)),
+          ],
+          const SizedBox(height: 12),
+          _buildMacStatusRow('Health', health, colors),
+          _buildMacStatusRow('Temperature', '${temp}°C', colors),
+        ],
+      );
+    } else {
+      batteryWidget = const Text('🔋 Battery\nUnknown', style: TextStyle(fontSize: 13));
+    }
+
+    return Container(
+      width: 280,
+      color: colors.background.withAlpha(240),
+      padding: const EdgeInsets.all(16.0),
+      child: ListView(
+        children: [
+          Text(statusText,
+              style: TextStyle(
+                  color: colors.lightText,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14)),
           const SizedBox(height: 8),
           Divider(color: colors.surface, thickness: 1, height: 1),
           const SizedBox(height: 16),
-          _buildMacStatusRow('Device', 'Unknown', colors),
+          _buildMacStatusRow('📱 Device', 'Unknown', colors),
+          const SizedBox(height: 8),
+          Divider(color: colors.surface, thickness: 1, height: 1),
+          const SizedBox(height: 16),
+          batteryWidget,
+          const SizedBox(height: 8),
+          Divider(color: colors.surface, thickness: 1, height: 1),
+          const SizedBox(height: 16),
+          const Text('Phone Mode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 8),
+          _buildPhoneModeSegmentedControl(colors, ws),
+          const SizedBox(height: 16),
+          Divider(color: colors.surface, thickness: 1, height: 1),
+          const SizedBox(height: 16),
+          const Text('Quick Actions', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 8),
+          _buildQuickActions(colors, ws),
+          const SizedBox(height: 16),
+          Divider(color: colors.surface, thickness: 1, height: 1),
+          const SizedBox(height: 16),
           _buildMacStatusRow('Contacts', '$contactCount', colors),
-          _buildMacStatusRow('Last Sync', 'Unknown', colors),
+          _buildMacStatusRow('Last Sync', 'Just now', colors),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPhoneModeSegmentedControl(CustomColors colors, WebSocketService ws) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: colors.surface.withAlpha(100)),
+          ),
+          child: Row(
+            children: [
+              _buildPhoneModeSegment('normal', '🔔', 'Normal', colors, ws),
+              _buildPhoneModeSegment('vibrate', '📳', 'Vibrate', colors, ws),
+              _buildPhoneModeSegment('silent', '🔕', 'Silent', colors, ws),
+            ],
+          ),
+        ),
+        if (_phoneModeUpdating)
+          const CircularProgressIndicator(),
+      ],
+    );
+  }
+
+  Widget _buildPhoneModeSegment(String mode, String icon, String tooltip, CustomColors colors, WebSocketService ws) {
+    final isSelected = _phoneMode == mode;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _previousPhoneMode = _phoneMode;
+            _phoneMode = mode;
+            _phoneModeUpdating = true;
+          });
+          ws.setRingerMode(mode);
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? colors.accent.withAlpha(80) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              icon,
+              style: TextStyle(fontSize: 16, color: isSelected ? colors.lightText : colors.lightText.withAlpha(120)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(CustomColors colors, WebSocketService ws) {
+    return Column(
+      children: [
+        _buildActionTile(
+          icon: '🔦',
+          title: 'Flashlight',
+          isActive: _flashlightOn,
+          colors: colors,
+          onTap: () {
+            ws.sendDeviceAction('flashlight', enabled: !_flashlightOn);
+          },
+        ),
+        _buildActionTile(
+          icon: '🔔',
+          title: _isRinging ? 'Stop Ringing' : 'Ring Phone',
+          isActive: _isRinging,
+          colors: colors,
+          onTap: () {
+            ws.sendDeviceAction('ring', enabled: !_isRinging);
+          },
+        ),
+        _buildActionTile(
+          icon: '🔒',
+          title: 'Lock',
+          isActive: false,
+          colors: colors,
+          onTap: () => ws.sendDeviceAction('lock'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionTile({
+    required String icon,
+    required String title,
+    String? subtitle,
+    required bool isActive,
+    required CustomColors colors,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive ? colors.accent.withAlpha(40) : Colors.transparent,
+            border: Border.all(
+              color: isActive ? colors.accent : colors.surface,
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 16)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: isActive ? colors.accent : colors.lightText,
+                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ),
+              if (subtitle != null)
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: colors.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -136,10 +136,14 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).extension<CustomColors>()!;
     return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(title: const Text('Scan QR Code')),
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text('Scan QR code', style: TextStyle(color: Colors.white, fontSize: 20)),
+        backgroundColor: const Color(0xFF111B21),
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+      ),
       body: Stack(
         children: [
           MobileScanner(
@@ -162,26 +166,90 @@ class _ScanScreenState extends State<ScanScreen> {
               );
             },
           ),
-          if (_verifying) const Center(child: CircularProgressIndicator()),
+          
+          // Translucent overlay with a clear square hole
+          Positioned.fill(
+            child: CustomPaint(
+              painter: ScannerOverlayPainter(),
+            ),
+          ),
+
+          // Top instructional text background
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              color: const Color(0xFF111B21),
+              padding: const EdgeInsets.only(left: 32, right: 32, top: 16, bottom: 24),
+              child: const Text(
+                'Open the Connecto Mac app on your computer to pair.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 15,
+                ),
+              ),
+            ),
+          ),
+
+          if (_verifying) const Center(child: CircularProgressIndicator(color: Colors.white)),
           if (_error != null)
             Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_error!, style: TextStyle(color: colors.danger)),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() => _error = null);
-                      controller.start();
-                    },
-                    child: const Text('Retry'),
-                  ),
-                ],
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                margin: const EdgeInsets.symmetric(horizontal: 24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111B21),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 16), textAlign: TextAlign.center),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                      ),
+                      onPressed: () {
+                        setState(() => _error = null);
+                        controller.start();
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
       ),
     );
   }
+}
+
+class ScannerOverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final backgroundPath = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    
+    // QR Code scanner hole size
+    final scanAreaSize = size.width * 0.70; 
+    final scanAreaRect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: scanAreaSize,
+      height: scanAreaSize,
+    );
+    final holePath = Path()..addRRect(RRect.fromRectAndRadius(scanAreaRect, const Radius.circular(12)));
+
+    // Create a path that is the background minus the hole
+    final path = Path.combine(PathOperation.difference, backgroundPath, holePath);
+    
+    final paint = Paint()..color = Colors.black.withOpacity(0.55);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -4,11 +4,14 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
-import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -22,6 +25,9 @@ import android.widget.RemoteViews
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyCallback
 import android.util.Log
+import android.hardware.camera2.CameraManager
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import okhttp3.*
@@ -48,9 +54,16 @@ class PhoneStateService : Service() {
     private var callStateReceiver: android.content.BroadcastReceiver? = null
     private var notificationReceiver: android.content.BroadcastReceiver? = null
     private var clipboardReceiver: android.content.BroadcastReceiver? = null
+    private var batteryReceiver: android.content.BroadcastReceiver? = null
 
     private var lastState = TelephonyManager.CALL_STATE_IDLE
     private var missedCallNotificationId = 100
+
+    private var isRinging = false
+    private var activeRingtone: android.media.Ringtone? = null
+    private var ringTimeoutRunnable: Runnable? = null
+    private var isFlashlightOn = false
+    private var torchCallback: CameraManager.TorchCallback? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var isListenersStarted = false
@@ -64,6 +77,17 @@ class PhoneStateService : Service() {
         createNotificationChannel()
         startNetworkMonitoring()
         cleanupStaleShareCache()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            torchCallback = object : CameraManager.TorchCallback() {
+                override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                    isFlashlightOn = enabled
+                    sendDeviceState()
+                }
+            }
+            cameraManager.registerTorchCallback(torchCallback!!, mainHandler)
+        }
     }
 
     /**
@@ -111,7 +135,10 @@ class PhoneStateService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "com.pakku.pakku_connect.UNPAIR") {
+        if (intent?.action == "com.pakku.pakku_connect.ACTION_STOP_RINGING") {
+            stopRinging()
+            return START_STICKY
+        } else if (intent?.action == "com.pakku.pakku_connect.UNPAIR") {
             try {
                 val json = JSONObject().apply { put("type", "unpair") }
                 sendAuthenticated(json.toString())
@@ -368,17 +395,17 @@ class PhoneStateService : Service() {
                 try {
                     val json = JSONObject(text)
                     val msgType = json.optString("type")
+                    if (!authenticated && msgType != "auth_ack") {
+                        Log.w(TAG, "Dropped inbound message (unauthenticated): $msgType")
+                        return
+                    }
                     when (msgType) {
                         "auth_ack" -> {
                             Log.d(TAG, "Authentication successful")
                             authenticated = true
-                            val msg = JSONObject().apply {
-                                put("type", "device_state")
-                                put("state", "connected")
-                            }
-                            Log.d(TAG, "SEND device_state")
-                            webSocket.send(msg.toString())
+                            sendDeviceState()
                             syncCallHistory()
+                            sendBatteryStatus(registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
                         }
                         "unpair" -> {
                             Log.i(TAG, "Received unpair command")
@@ -394,6 +421,15 @@ class PhoneStateService : Service() {
                         }
                         "request.call_history" -> {
                             syncCallHistory()
+                        }
+                        "set_ringer_mode" -> {
+                            val mode = json.optString("mode")
+                            handleSetRingerMode(mode)
+                        }
+                        "device_action" -> {
+                            val action = json.optString("action")
+                            val enabled = json.optBoolean("enabled", false)
+                            handleDeviceAction(action, enabled)
                         }
                         "answer_call" -> {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -835,6 +871,15 @@ class PhoneStateService : Service() {
             return
         }
 
+        batteryReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                    sendBatteryStatus(intent)
+                }
+            }
+        }
+        registerReceiver(batteryReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
         try {
             val callLogObserver = object : ContentObserver(mainHandler) {
                 override fun onChange(selfChange: Boolean) {
@@ -1069,6 +1114,62 @@ class PhoneStateService : Service() {
     }
 
 
+    private fun sendDeviceState() {
+        if (!authenticated) return
+        try {
+            val json = JSONObject().apply {
+                put("type", "device_state")
+                put("state", "connected")
+                put("ringing", isRinging)
+                put("flashlight", isFlashlightOn)
+            }
+            sendAuthenticated(json.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send device state", e)
+        }
+    }
+
+    private fun stopRinging() {
+        if (!isRinging) return
+        
+        activeRingtone?.stop()
+        activeRingtone = null
+        
+        ringTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        ringTimeoutRunnable = null
+        
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(101)
+        
+        isRinging = false
+        sendDeviceState()
+    }
+
+    private fun showRingingNotification() {
+        val stopIntent = Intent(this, PhoneStateService::class.java).apply {
+            action = "com.pakku.pakku_connect.ACTION_STOP_RINGING"
+        }
+        val pendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        
+        val channelId = "ring_channel"
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Find My Phone", NotificationManager.IMPORTANCE_HIGH)
+            manager.createNotificationChannel(channel)
+        }
+        
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Connecto")
+            .setContentText("Phone is ringing")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "STOP RINGING", pendingIntent)
+            .build()
+            
+        manager.notify(101, notification)
+    }
+
     private fun showMissedCallNotification(phoneNumber: String) {
         val manager = getSystemService(NotificationManager::class.java)
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -1101,12 +1202,22 @@ class PhoneStateService : Service() {
         }
         networkCallback = null
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            torchCallback?.let {
+                val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                cameraManager.unregisterTorchCallback(it)
+            }
+        }
+        torchCallback = null
+
         callStateReceiver?.let { unregisterReceiver(it) }
         callStateReceiver = null
         notificationReceiver?.let { unregisterReceiver(it) }
         notificationReceiver = null
         clipboardReceiver?.let { unregisterReceiver(it) }
         clipboardReceiver = null
+        batteryReceiver?.let { unregisterReceiver(it) }
+        batteryReceiver = null
         isListenersStarted = false
         running.set(false)
 
@@ -1114,6 +1225,165 @@ class PhoneStateService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private var mediaPlayer: MediaPlayer? = null
+
+    private fun sendBatteryStatus(intent: Intent?) {
+        if (intent == null) return
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
+        val health = intent.getIntExtra(BatteryManager.EXTRA_HEALTH, -1)
+        val temperature = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)
+
+        val percentage = if (level >= 0 && scale > 0) (level * 100f / scale).toInt() else -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || plugged > 0
+        
+        var chargeTimeRemaining = -1L
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            chargeTimeRemaining = batteryManager.computeChargeTimeRemaining()
+            if (chargeTimeRemaining > 0) {
+                chargeTimeRemaining /= (1000 * 60) // convert ms to minutes
+            }
+        }
+
+        val healthStr = when (health) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> "excellent"
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "overheating"
+            BatteryManager.BATTERY_HEALTH_DEAD -> "dead"
+            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "over_voltage"
+            BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "failure"
+            BatteryManager.BATTERY_HEALTH_COLD -> "cold"
+            else -> "unknown"
+        }
+
+        val json = JSONObject().apply {
+            put("type", "battery_status")
+            put("level", percentage)
+            put("charging", isCharging)
+            put("temperature", temperature / 10.0)
+            put("health", healthStr)
+            put("chargeTimeRemaining", chargeTimeRemaining)
+            put("timestamp", System.currentTimeMillis() / 1000)
+        }
+        sendAuthenticated(json.toString())
+    }
+
+    private fun handleSetRingerMode(mode: String) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        val modeInt = when (mode) {
+            "silent" -> AudioManager.RINGER_MODE_SILENT
+            "vibrate" -> AudioManager.RINGER_MODE_VIBRATE
+            else -> AudioManager.RINGER_MODE_NORMAL
+        }
+
+        if (modeInt == AudioManager.RINGER_MODE_SILENT && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!notificationManager.isNotificationPolicyAccessGranted) {
+                sendAuthenticated("""{"type":"action_result","action":"set_ringer_mode","status":"permission_required"}""")
+                val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                return
+            }
+        }
+
+        try {
+            audioManager.ringerMode = modeInt
+            sendAuthenticated("""{"type":"action_result","action":"set_ringer_mode","status":"success"}""")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set ringer mode", e)
+            sendAuthenticated("""{"type":"action_result","action":"set_ringer_mode","status":"error","error":"${e.message}"}""")
+        }
+    }
+
+    private fun handleDeviceAction(action: String, enabled: Boolean) {
+        when (action) {
+            "flashlight" -> {
+                try {
+                    val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                    val cameraId = cameraManager.cameraIdList.firstOrNull { 
+                        cameraManager.getCameraCharacteristics(it).get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true 
+                    }
+                    if (cameraId != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            cameraManager.setTorchMode(cameraId, enabled)
+                            sendAuthenticated("""{"type":"action_result","action":"flashlight","status":"success","enabled":$enabled}""")
+                        } else {
+                            sendAuthenticated("""{"type":"action_result","action":"flashlight","status":"error","error":"Requires Android M+"}""")
+                        }
+                    } else {
+                        sendAuthenticated("""{"type":"action_result","action":"flashlight","status":"error","error":"No flash available"}""")
+                    }
+                } catch (e: Exception) {
+                    sendAuthenticated("""{"type":"action_result","action":"flashlight","status":"error","error":"${e.message}"}""")
+                }
+            }
+            "ring" -> {
+                try {
+                    if (enabled) {
+                        if (isRinging) stopRinging()
+                        
+                        val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE) ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                        activeRingtone = RingtoneManager.getRingtone(this, uri)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            activeRingtone?.isLooping = true
+                        }
+                        
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            val audioAttributes = android.media.AudioAttributes.Builder()
+                                .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                            activeRingtone?.audioAttributes = audioAttributes
+                        } else {
+                            @Suppress("DEPRECATION")
+                            activeRingtone?.streamType = AudioManager.STREAM_ALARM
+                        }
+                        
+                        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                        val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                        audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0)
+                        
+                        activeRingtone?.play()
+                        isRinging = true
+                        
+                        showRingingNotification()
+                        
+                        ringTimeoutRunnable = Runnable { stopRinging() }
+                        mainHandler.postDelayed(ringTimeoutRunnable!!, 30000)
+                        
+                        sendAuthenticated("""{"type":"action_result","action":"ring","status":"success","enabled":true}""")
+                    } else {
+                        stopRinging()
+                        sendAuthenticated("""{"type":"action_result","action":"ring","status":"success","enabled":false}""")
+                    }
+                } catch (e: Exception) {
+                    sendAuthenticated("""{"type":"action_result","action":"ring","status":"error","error":"${e.message}"}""")
+                }
+            }
+            "lock" -> {
+                val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                val adminComponent = ComponentName(this, PakkuDeviceAdminReceiver::class.java)
+                
+                if (dpm.isAdminActive(adminComponent)) {
+                    dpm.lockNow()
+                    sendAuthenticated("""{"type":"action_result","action":"lock","status":"success"}""")
+                } else {
+                    sendAuthenticated("""{"type":"action_result","action":"lock","status":"permission_required"}""")
+                    val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                        putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Required to remotely lock the phone from your Mac.")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(intent)
+                }
+            }
+        }
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

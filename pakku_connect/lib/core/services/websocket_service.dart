@@ -43,8 +43,11 @@ class WebSocketService implements PlatformTransport {
   void Function(List<RemoteContact> contacts)? onContactsReceived;
   List<RemoteContact> cachedContacts = [];
   void Function(String action, bool success, String? error)? onActionResult;
+  void Function(String action, String status, String? error, Map<String, dynamic> data)? onActionStatus;
+  void Function(Map<String, dynamic> data)? onDeviceState;
   void Function()? onUnpair;
   void Function(Map<String, dynamic> data)? onPlatformMessage;
+  void Function(Map<String, dynamic> batteryData)? onBatteryStatus;
 
   WebSocketService({
     this.onIncomingCall,
@@ -213,20 +216,18 @@ class WebSocketService implements PlatformTransport {
       } else if (type == MessageTypes.deviceState) {
         final state = data['state'];
         
-        if (state is! String) {
-          return;
+        if (state is String) {
+          switch (state) {
+            case 'connected':
+              onDeviceStateChanged?.call(DeviceSessionState.connected);
+              break;
+            case 'disconnected':
+              onDeviceStateChanged?.call(DeviceSessionState.disconnected);
+              break;
+          }
         }
-
-        switch (state) {
-          case 'connected':
-            onDeviceStateChanged?.call(DeviceSessionState.connected);
-            break;
-          case 'disconnected':
-            onDeviceStateChanged?.call(DeviceSessionState.disconnected);
-            break;
-          default:
-            break;
-        }
+        
+        onDeviceState?.call(data);
       } else if (type == MessageTypes.contacts) {
         final contactsData = data['contacts'] as List?;
         if (contactsData != null) {
@@ -238,11 +239,17 @@ class WebSocketService implements PlatformTransport {
         }
       } else if (type == MessageTypes.actionResult) {
         final action = data['action'] as String?;
-        final success = data['success'] as bool? ?? false;
+        final status = data['status'] as String?;
+        final success = data['success'] as bool? ?? (status == 'success');
         final error = data['error'] as String?;
         if (action != null) {
           onActionResult?.call(action, success, error);
+          onActionStatus?.call(action, status ?? (success ? 'success' : 'error'), error, data);
         }
+      } else if (type == 'device_state') {
+        onDeviceState?.call(data);
+      } else if (type == 'battery_status') {
+        onBatteryStatus?.call(data);
       } else if (type == MessageTypes.unpair) {
         onUnpair?.call();
       } else {
@@ -265,6 +272,26 @@ class WebSocketService implements PlatformTransport {
     }
     debugPrint('WebSocketService: SEND outbound message (${data['type']})');
     _channel?.sink.add(jsonEncode(data));
+  }
+
+  void setRingerMode(String mode) {
+    if (!_authenticated) return;
+    _channel?.sink.add(jsonEncode({
+      'type': 'set_ringer_mode',
+      'mode': mode,
+    }));
+  }
+
+  void sendDeviceAction(String action, {bool? enabled}) {
+    if (!_authenticated) return;
+    final Map<String, dynamic> payload = {
+      'type': 'device_action',
+      'action': action,
+    };
+    if (enabled != null) {
+      payload['enabled'] = enabled;
+    }
+    _channel?.sink.add(jsonEncode(payload));
   }
 
   void requestContacts() {
