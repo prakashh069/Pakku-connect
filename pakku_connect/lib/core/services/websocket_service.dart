@@ -112,7 +112,8 @@ class WebSocketService implements PlatformTransport {
       // If macOS, try to provision the relay with the HMAC secret
       if (Platform.isMacOS && _hmacSecret != null) {
         try {
-          final tokenFile = File('/tmp/pakku.token');
+          final tokenPath = Directory.systemTemp.path + '/Connecto/pakku.token';
+          final tokenFile = File(tokenPath);
           if (tokenFile.existsSync()) {
             final ipcToken = tokenFile.readAsStringSync();
             debugPrint('WebSocketService: SEND set_secret');
@@ -123,7 +124,7 @@ class WebSocketService implements PlatformTransport {
             }));
           }
         } catch (e) {
-          debugPrint('WebSocketService: Failed to process /tmp/pakku.token: $e');
+          debugPrint('WebSocketService: Failed to process \$tokenPath: \$e');
         }
       }
 

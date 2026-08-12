@@ -2,6 +2,8 @@ const fs = require('fs');
 const https = require('https');
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const os = require('os');
+const path = require('path');
 
 // ---------------------------------------------------------------------------
 // Structured logging
@@ -31,8 +33,20 @@ const wss    = new WebSocket.Server({ server });
 // Security constants & IPC Provisioning
 // ---------------------------------------------------------------------------
 const ipcToken = crypto.randomBytes(32).toString('hex');
-const TOKEN_PATH = '/tmp/pakku.token';
-fs.writeFileSync(TOKEN_PATH, ipcToken, { mode: 0o600 });
+const connectoDir = path.join(os.tmpdir(), 'Connecto');
+if (!fs.existsSync(connectoDir)) {
+  fs.mkdirSync(connectoDir, { recursive: true, mode: 0o700 });
+}
+const TOKEN_PATH = path.join(connectoDir, 'pakku.token');
+
+// Remove existing file if it exists to allow O_EXCL to work
+if (fs.existsSync(TOKEN_PATH)) {
+  fs.unlinkSync(TOKEN_PATH);
+}
+// Use O_CREAT | O_EXCL to prevent symlink following
+const fd = fs.openSync(TOKEN_PATH, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, 0o600);
+fs.writeSync(fd, ipcToken);
+fs.closeSync(fd);
 let hmacSecret = null;
 let tokenConsumed = false;
 const MAX_PAYLOAD_BYTES       = 5 * 1024 * 1024; // 5 MB (accommodates large contact lists)

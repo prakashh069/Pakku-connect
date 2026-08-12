@@ -652,7 +652,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Container(
           height: 56,
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: Colors.white.withAlpha(13), // rgba(255,255,255,0.05)
             border: Border.all(
@@ -673,14 +673,19 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             children: [
               Icon(icon, size: 22, color: isActive ? colors.accent : colors.lightText),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: isActive ? colors.accent : colors.lightText,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 16,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: isActive ? colors.accent : colors.lightText,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 15,
+                    ),
                   ),
                 ),
               ),
