@@ -136,7 +136,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                       Theme.of(context).brightness == Brightness.dark
                           ? 'assets/images/connecto_logo_dark.png'
                           : 'assets/images/connecto_logo_light.png',
-                      height: 40,
+                      height: 42,
                       fit: BoxFit.contain,
                     ),
                   ),

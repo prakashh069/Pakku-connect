@@ -535,9 +535,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 50,
         title: Image.asset(
           logoAsset,
-          height: 32,
+          height: 34,
           fit: BoxFit.contain,
         ),
         actions: [
