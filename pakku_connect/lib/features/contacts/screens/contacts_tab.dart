@@ -546,7 +546,7 @@ class _StickyHeaderDelegate extends SliverPersistentHeaderDelegate {
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Container(
       key: key,
-      color: colors.background.withAlpha(240),
+      color: colors.background,
       padding: const EdgeInsets.symmetric(horizontal: 32.0),
       alignment: Alignment.centerLeft,
       child: Text(
