@@ -1,7 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 enum CallDirection { incoming, outgoing }
-enum CallState { ringing, answeredRemotely, declinedRemotely, ended }
+enum CallState { ringing, active, declinedRemotely, ended }
 
 class Call {
   final String callId;

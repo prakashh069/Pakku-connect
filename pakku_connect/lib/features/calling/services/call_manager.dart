@@ -25,6 +25,7 @@ class CallManager extends ChangeNotifier {
   Timer? _durationTimer;
   Duration callDuration = Duration.zero;
   bool isEnding = false;
+  bool _isEnded = false; // Guards against _transitionToEnded() being called multiple times
 
   final List<Call> _callHistory = [];
   List<Call> get callHistory => List.unmodifiable(_callHistory);
@@ -112,16 +113,31 @@ class CallManager extends ChangeNotifier {
   }
 
   void handleCallState(String callId, String state) {
-    if (_currentCall == null) return;
+    debugPrint('CALL_EVENT_RECEIVED: state=$state callId=$callId currentCallId=${_currentCall?.callId}');
+    
+    if (_currentCall == null) {
+      if (state == 'ended') {
+        _transitionToEnded(); // ensure cleanup just in case
+      }
+      return;
+    }
+
     if (callId.isNotEmpty && _currentCall!.callId != callId) {
       // Stale or unrelated message
       return;
     }
 
-    if (state == 'answered') {
-      if (_currentCall!.state == CallState.answeredRemotely) return; // duplicate
-      _currentCall!.state = CallState.answeredRemotely;
+    if (state == 'ended') {
+      if (_currentCall!.state == CallState.ended) return; // duplicate
+      _transitionToEnded();
+      return;
+    }
 
+    if (state == 'active') {
+      if (_currentCall!.state == CallState.active) return; // duplicate
+      _currentCall!.state = CallState.active;
+
+      _stopwatch.reset(); // Ensure stopwatch is fresh when call goes active
       _stopwatch.start();
       _durationTimer?.cancel();
       callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
@@ -136,28 +152,18 @@ class CallManager extends ChangeNotifier {
     } else if (state == 'dialing') {
       // Do not start the timer while dialing. 
       // The UI already shows "Calling..." from the initial showCall.
-    } else if (state == 'ended') {
-      if (_currentCall!.state == CallState.ended) return; // duplicate
-      
-      _transitionToEnded();
     }
   }
 
-  void _transitionToEnding() {
-    if (_currentCall == null || isEnding) return;
-    
-    isEnding = true;
-    notifyListeners();
-
-    _endTimeoutTimer?.cancel();
-    _endTimeoutTimer = Timer(kCallEndTimeout, () {
-      if (isEnding && _currentCall?.state != CallState.ended) {
-        _transitionToEnded();
-      }
-    });
-  }
 
   void _transitionToEnded() {
+    if (_currentCall == null) return;
+    
+    // Idempotency guard — prevents double-dismiss when both action_result
+    // and call_state:ended arrive in rapid succession.
+    if (_isEnded) return;
+    _isEnded = true;
+
     _endTimeoutTimer?.cancel();
     _durationTimer?.cancel();
     _stopwatch.stop();
@@ -185,32 +191,14 @@ class CallManager extends ChangeNotifier {
 
   void handleActionResult(String action, bool success, String? error) {
     if ((action == 'end_call' || action == 'reject_call') && !success) {
-      // Android failed to process end/reject call, but we are in Ending state.
-      // We will let the timeout force the cleanup instead of leaving UI stuck.
+      // Android failed to process end/reject call.
       lastNativeError = error ?? 'Failed to $action';
       notifyListeners();
-    } else if (action == 'reject_call' && success) {
-      _transitionToEnded();
     } else if ((action == 'dial' || action == 'answer_call') && !success) {
       lastNativeError = error ?? 'Failed to $action';
       _transitionToEnded(); // Explicitly end local tracking
     } else if (action == 'answer_call' && success) {
-      debugPrint('CallManager: handleActionResult answer_call success! Current call state: ${_currentCall?.state}');
-      if (_currentCall != null && _currentCall!.state != CallState.answeredRemotely) {
-        _currentCall!.state = CallState.answeredRemotely;
-        _stopwatch.reset(); // ADDED RESET JUST IN CASE
-        _stopwatch.start();
-        _durationTimer?.cancel();
-        callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
-
-        _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-          callDuration = _stopwatch.elapsed;
-          notifyListeners();
-          callPresenter?.updateCall(_currentCall!, elapsedSeconds: callDuration.inSeconds);
-        });
-
-        notifyListeners();
-      }
+      debugPrint('CallManager: answer_call successful, waiting for call_state: active from Android');
     }
   }
 
@@ -224,21 +212,18 @@ class CallManager extends ChangeNotifier {
   Future<void> rejectCall() async {
     if (_currentCall == null) return;
     lastNativeError = null;
-    _transitionToEnding();
     wsService.send({'type': MessageTypes.rejectCall, 'callId': _currentCall!.callId});
   }
 
   Future<void> cancelOutgoingCall() async {
     if (_currentCall == null || _currentCall!.direction != CallDirection.outgoing) return;
     lastNativeError = null;
-    _transitionToEnding();
     wsService.send({'type': MessageTypes.rejectCall, 'callId': _currentCall!.callId});
   }
 
   Future<void> endCall() async {
     if (_currentCall == null) return;
     lastNativeError = null;
-    _transitionToEnding();
     wsService.send({'type': MessageTypes.endCall, 'callId': _currentCall!.callId});
   }
 
@@ -287,6 +272,7 @@ class CallManager extends ChangeNotifier {
     _stopwatch.reset();
     callDuration = Duration.zero;
     isEnding = false;
+    _isEnded = false; // Reset so the next call can use _transitionToEnded() cleanly
     _currentCall = null;
     notifyListeners();
     

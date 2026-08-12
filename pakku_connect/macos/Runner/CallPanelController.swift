@@ -214,40 +214,35 @@ class CallPanelController {
                 p.orderFrontRegardless()
             }
             
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.3
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            if state == "ended" || state == "declinedRemotely" {
+                self.acceptButton.isHidden = true
+                self.declineButton.isHidden = true
                 
-                if state == "ended" || state == "declinedRemotely" {
-                    self.acceptButton.animator().isHidden = true
-                    self.declineButton.animator().isHidden = true
-                    
-                    let statusText = state == "ended" ? "Call Ended" : "Declined"
-                    if elapsedSeconds > 0 {
-                        let mins = elapsedSeconds / 60
-                        let secs = elapsedSeconds % 60
-                        let timeString = String(format: "%02d:%02d", mins, secs)
-                        self.subtitleLabel.animator().stringValue = "\(statusText) • \(timeString)"
-                    } else {
-                        self.subtitleLabel.animator().stringValue = statusText
-                    }
-                    
-                    self.subtitleLabel.textColor = NSColor.systemRed
-                } else if state == "answeredRemotely" || state == "answered" {
-                    // Hide accept, decline stays in its original fixed position
-                    self.acceptButton.animator().isHidden = true
-                    self.subtitleLabel.textColor = .labelColor
-                    
+                let statusText = state == "ended" ? "Call Ended" : "Declined"
+                if elapsedSeconds > 0 {
                     let mins = elapsedSeconds / 60
                     let secs = elapsedSeconds % 60
                     let timeString = String(format: "%02d:%02d", mins, secs)
-                    
-                    // Subtitle: number + timer
-                    if self.currentNumber.isEmpty {
-                        self.subtitleLabel.animator().stringValue = "In Call • \(timeString)"
-                    } else {
-                        self.subtitleLabel.animator().stringValue = "\(self.currentNumber) • \(timeString)"
-                    }
+                    self.subtitleLabel.stringValue = "\(statusText) • \(timeString)"
+                } else {
+                    self.subtitleLabel.stringValue = statusText
+                }
+                
+                self.subtitleLabel.textColor = NSColor.systemRed
+            } else if state == "active" {
+                // Hide accept, decline stays in its original fixed position
+                self.acceptButton.isHidden = true
+                self.subtitleLabel.textColor = .labelColor
+                
+                let mins = elapsedSeconds / 60
+                let secs = elapsedSeconds % 60
+                let timeString = String(format: "%02d:%02d", mins, secs)
+                
+                // Subtitle: number + timer
+                if self.currentNumber.isEmpty {
+                    self.subtitleLabel.stringValue = "In Call • \(timeString)"
+                } else {
+                    self.subtitleLabel.stringValue = "\(self.currentNumber) • \(timeString)"
                 }
             }
         }

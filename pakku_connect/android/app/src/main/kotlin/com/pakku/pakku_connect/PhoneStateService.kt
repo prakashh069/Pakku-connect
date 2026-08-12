@@ -56,8 +56,11 @@ class PhoneStateService : Service() {
     private var clipboardReceiver: android.content.BroadcastReceiver? = null
     private var batteryReceiver: android.content.BroadcastReceiver? = null
 
+    private var previousCallState = TelephonyManager.CALL_STATE_IDLE
     private var lastState = TelephonyManager.CALL_STATE_IDLE
     private var missedCallNotificationId = 100
+    private var lastEndedCallId: String? = null
+    private var lastEndedTimestamp: Long = 0
 
     private var isRinging = false
     private var activeRingtone: android.media.Ringtone? = null
@@ -406,6 +409,21 @@ class PhoneStateService : Service() {
                             sendDeviceState()
                             syncCallHistory()
                             sendBatteryStatus(registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
+                            
+                            // Synchronize current call state if one is active
+                            val cid = trackedCallId
+                            if (cid != null && lastState != TelephonyManager.CALL_STATE_IDLE) {
+                                val stateStr = when (lastState) {
+                                    TelephonyManager.CALL_STATE_OFFHOOK -> "active"
+                                    TelephonyManager.CALL_STATE_RINGING -> "incoming"
+                                    else -> "ended"
+                                }
+                                Log.d(TAG, "CALL_EVENT_SENT: $stateStr callId=$cid socketConnected=${webSocket != null} authenticated=$authenticated")
+                                sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"$stateStr"}""")
+                            } else if (lastEndedCallId != null && (System.currentTimeMillis() - lastEndedTimestamp) < 10000) {
+                                Log.d(TAG, "CALL_EVENT_SENT: ended callId=$lastEndedCallId socketConnected=${webSocket != null} authenticated=$authenticated")
+                                sendAuthenticated("""{"type":"call_state","callId":"$lastEndedCallId","state":"ended"}""")
+                            }
                         }
                         "unpair" -> {
                             Log.i(TAG, "Received unpair command")
@@ -918,8 +936,8 @@ class PhoneStateService : Service() {
                     if (intent?.action == CallNotificationListenerService.ACTION_CALL_ANSWERED) {
                         if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
                             val cid = trackedCallId ?: ""
-                            sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"answered"}""")
-                            Log.d(TAG, "Sent call_state=answered (outgoing via notification)")
+                            sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"active"}""")
+                            Log.d(TAG, "Sent call_state=active (outgoing via notification)")
                         }
                     }
                 }
@@ -1066,50 +1084,73 @@ class PhoneStateService : Service() {
 
     /** Shared by both the legacy and modern telephony callback paths. */
     private fun handleStateChange(state: Int, phoneNumber: String?) {
+        Log.d(TAG, "PhoneStateReceiver triggered")
         val stateStr = when(state) {
             TelephonyManager.CALL_STATE_IDLE -> "IDLE"
             TelephonyManager.CALL_STATE_RINGING -> "RINGING"
             TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
             else -> "UNKNOWN"
         }
-        Log.d(TAG, "Telephony state: $stateStr")
+        val prevStr = when(previousCallState) {
+            TelephonyManager.CALL_STATE_IDLE -> "IDLE"
+            TelephonyManager.CALL_STATE_RINGING -> "RINGING"
+            TelephonyManager.CALL_STATE_OFFHOOK -> "OFFHOOK"
+            else -> "UNKNOWN"
+        }
+        Log.d(TAG, "PHONE_STATE_CHANGE\nprevious=$prevStr\ncurrent=$stateStr\ntrackedCallId=$trackedCallId\nwebsocketConnected=${webSocket != null}\nauthenticated=$authenticated")
 
         when (state) {
             TelephonyManager.CALL_STATE_RINGING -> {
                 val number = phoneNumber ?: "Unknown"
-                val callId = java.util.UUID.randomUUID().toString()
-                trackedCallId = callId
-                val msg = """{"type":"incoming_call","callId":"$callId","phoneNumber":"$number","contactName":""}"""
-                Log.d(TAG, "SEND incoming_call")
+                if (trackedCallId == null) {
+                    trackedCallId = java.util.UUID.randomUUID().toString()
+                    trackedPhoneNumber = number
+                    trackedContactName = getContactName(number)
+                }
+                val callId = trackedCallId ?: ""
+                Log.d(TAG, "CALL_LIFECYCLE\nstate=RINGING\ncallId=$callId")
+                
+                // Use resolved contact name in the websocket message if available, else empty string
+                val cName = trackedContactName ?: ""
+                val msg = """{"type":"incoming_call","callId":"$callId","phoneNumber":"$number","contactName":"$cName"}"""
+                Log.d(TAG, "CALL_EVENT_SENT: incoming callId=$callId socketConnected=${webSocket != null} authenticated=$authenticated")
                 sendAuthenticated(msg)
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
+                lastEndedCallId = trackedCallId
                 val isIncomingAnswered = lastState == TelephonyManager.CALL_STATE_RINGING
                 val isOutgoingConnected = lastState == TelephonyManager.CALL_STATE_IDLE
                 val cid = trackedCallId ?: ""
+                Log.d(TAG, "CALL_LIFECYCLE\nstate=OFFHOOK\ncallId=$cid")
 
                 if (isIncomingAnswered) {
-                    Log.d(TAG, "SEND call_state answered")
-                    sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"answered"}""")
+                    Log.d(TAG, "CALL_EVENT_SENT: active callId=$cid socketConnected=${webSocket != null} authenticated=$authenticated")
+                    sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"active"}""")
                 } else if (isOutgoingConnected) {
-                    Log.d(TAG, "SEND call_state dialing")
+                    Log.d(TAG, "CALL_EVENT_SENT: dialing callId=$cid socketConnected=${webSocket != null} authenticated=$authenticated")
                     sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"dialing"}""")
                 }
             }
             TelephonyManager.CALL_STATE_IDLE -> {
-                val cid = trackedCallId
-                if (cid != null) {
-                    Log.d(TAG, "SEND call_state ended")
-                    sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"ended"}""")
-                    trackedCallId = null
-                }
+                lastEndedTimestamp = System.currentTimeMillis()
+                lastEndedCallId = trackedCallId
+                val cid = trackedCallId ?: ""
+                Log.d(TAG, "CALL_LIFECYCLE\nstate=IDLE\ncallId=$cid")
+                Log.d(TAG, "CALL_EVENT_SENT: ended callId=$cid socketConnected=${webSocket != null} authenticated=$authenticated")
+                sendAuthenticated("""{"type":"call_state","callId":"$cid","state":"ended"}""")
+                Log.d(TAG, "ENDED_EVENT_DISPATCHED callId=$cid")
                 
                 // Missed call: went straight from RINGING to IDLE, never OFFHOOK.
                 if (lastState == TelephonyManager.CALL_STATE_RINGING) {
-                    showMissedCallNotification(phoneNumber ?: "Unknown")
+                    showMissedCallNotification()
                 }
+                
+                trackedCallId = null
+                trackedPhoneNumber = null
+                trackedContactName = null
             }
         }
+        previousCallState = lastState
         lastState = state
     }
 
@@ -1170,11 +1211,37 @@ class PhoneStateService : Service() {
         manager.notify(101, notification)
     }
 
-    private fun showMissedCallNotification(phoneNumber: String) {
+    private fun getContactName(phoneNumber: String): String? {
+        if (phoneNumber == "Unknown") return null
+        val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber))
+        val projection = arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME)
+        var contactName: String? = null
+        try {
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    contactName = cursor.getString(0)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error looking up contact name: ${e.message}")
+        }
+        return contactName
+    }
+
+    private fun showMissedCallNotification() {
         val manager = getSystemService(NotificationManager::class.java)
+        
+        val displayNumber = trackedPhoneNumber ?: "Unknown"
+        val displayName = trackedContactName
+        
+        // Use BigTextStyle to format Name and Number clearly
+        val style = NotificationCompat.BigTextStyle()
+            .bigText(if (displayName != null) "$displayName\n$displayNumber" else displayNumber)
+            
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Missed Call")
-            .setContentText(phoneNumber)
+            .setContentText(displayName ?: displayNumber) // fallback for collapsed view
+            .setStyle(style)
             .setSmallIcon(android.R.drawable.stat_notify_missed_call)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
@@ -1402,6 +1469,10 @@ class PhoneStateService : Service() {
         val running = AtomicBoolean(false)
         @Volatile
         var trackedCallId: String? = null
+        @Volatile
+        var trackedPhoneNumber: String? = null
+        @Volatile
+        var trackedContactName: String? = null
     }
 
     private fun sendAuthenticated(msg: String) {
@@ -1409,6 +1480,13 @@ class PhoneStateService : Service() {
             if (!authenticated || webSocket == null) {
                 Log.w(TAG, "Dropped outbound message (unauthenticated).")
                 return
+            }
+            try {
+                val json = JSONObject(msg)
+                val type = json.optString("type", "unknown")
+                Log.d(TAG, "WS_SEND type=\$type")
+            } catch (e: Exception) {
+                Log.d(TAG, "WS_SEND type=unknown")
             }
             webSocket?.send(msg)
         }

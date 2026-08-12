@@ -404,6 +404,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: colors.lightText.withAlpha(178),
               ),
             ),
+            const SizedBox(height: 32),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('paired', false);
+                if (context.mounted) {
+                  Navigator.of(context).pushReplacementNamed('/');
+                }
+              },
+              icon: const Icon(Icons.qr_code_scanner, color: Colors.white70),
+              label: const Text('Unpair & Scan New Mac', style: TextStyle(color: Colors.white)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: colors.accent.withAlpha(150)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -442,92 +461,88 @@ class _HomeScreenState extends State<HomeScreen> {
       BuildContext context, CustomColors colors, WebSocketService ws) {
     final isConnected = widget.sessionState == DeviceSessionState.connected;
     final statusText = isConnected
-        ? '🟢 Connected'
+        ? '● Connected'
         : (widget.sessionState == DeviceSessionState.paused
-            ? '⏸ Paused'
-            : '🔴 Offline');
+            ? '● Paused'
+            : '● Offline');
+    final statusColor = isConnected
+        ? Colors.green
+        : (widget.sessionState == DeviceSessionState.paused ? Colors.orange : Colors.red);
     final contactCount = ws.cachedContacts.length;
 
     Widget batteryWidget = const SizedBox();
     if (_batteryData != null) {
       final level = _batteryData!['level'] as int? ?? 0;
       final charging = _batteryData!['charging'] as bool? ?? false;
-      final temp = _batteryData!['temperature'] as num? ?? 0;
-      final rawHealth = _batteryData!['health'] as String? ?? 'unknown';
-      final health = rawHealth.isNotEmpty ? '${rawHealth[0].toUpperCase()}${rawHealth.substring(1)}' : 'Unknown';
-
-      final barColor = level > 30 ? Colors.green : (level > 15 ? Colors.orange : Colors.red);
-
+      
       batteryWidget = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text('🔋 Battery', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Text('$level%', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: colors.lightText)),
           const SizedBox(height: 8),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: level / 100.0,
-                    minHeight: 12,
-                    backgroundColor: colors.surface,
-                    valueColor: AlwaysStoppedAnimation<Color>(barColor),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text('$level%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              Icon(charging ? Icons.battery_charging_full : Icons.battery_full, size: 16, color: colors.lightText.withAlpha(150)),
+              const SizedBox(width: 6),
+              Text('Battery', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: colors.lightText.withAlpha(150))),
             ],
           ),
-          if (charging) ...[
-            const SizedBox(height: 4),
-            const Text('⚡ Charging', style: TextStyle(fontSize: 12, color: Colors.green)),
-          ],
           const SizedBox(height: 12),
-          _buildMacStatusRow('Health', health, colors),
-          _buildMacStatusRow('Temperature', '${temp}°C', colors),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: level / 100.0,
+              minHeight: 4,
+              backgroundColor: Colors.white.withAlpha(20),
+              valueColor: AlwaysStoppedAnimation<Color>(charging ? colors.accent : Colors.white.withAlpha(200)),
+            ),
+          ),
+          if (charging) ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.bolt, size: 16, color: colors.accent),
+                const SizedBox(width: 4),
+                Text('Charging', style: TextStyle(fontSize: 13, color: colors.accent, fontWeight: FontWeight.w500)),
+              ],
+            )
+          ],
         ],
       );
     } else {
-      batteryWidget = const Text('🔋 Battery\nUnknown', style: TextStyle(fontSize: 13));
+      batteryWidget = const Center(child: Text('Battery\nUnknown', textAlign: TextAlign.center, style: TextStyle(fontSize: 13)));
     }
 
     return Container(
       width: 280,
       color: colors.background.withAlpha(240),
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
       child: ListView(
         children: [
-          Text(statusText,
-              style: TextStyle(
-                  color: colors.lightText,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14)),
-          const SizedBox(height: 8),
-          Divider(color: colors.surface, thickness: 1, height: 1),
-          const SizedBox(height: 16),
-          _buildMacStatusRow('📱 Device', 'Unknown', colors),
-          const SizedBox(height: 8),
-          Divider(color: colors.surface, thickness: 1, height: 1),
-          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(statusText,
+                  style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14)),
+            ],
+          ),
+          const SizedBox(height: 32),
           batteryWidget,
-          const SizedBox(height: 8),
-          Divider(color: colors.surface, thickness: 1, height: 1),
-          const SizedBox(height: 16),
-          const Text('Phone Mode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 32),
+          Text('Phone Mode', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colors.lightText)),
+          const SizedBox(height: 12),
           _buildPhoneModeSegmentedControl(colors, ws),
-          const SizedBox(height: 16),
-          Divider(color: colors.surface, thickness: 1, height: 1),
-          const SizedBox(height: 16),
-          const Text('Quick Actions', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          const SizedBox(height: 8),
+          const SizedBox(height: 32),
+          Text('Quick Actions', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colors.lightText)),
+          const SizedBox(height: 12),
           _buildQuickActions(colors, ws),
-          const SizedBox(height: 16),
-          Divider(color: colors.surface, thickness: 1, height: 1),
-          const SizedBox(height: 16),
+          const SizedBox(height: 32),
           _buildMacStatusRow('Contacts', '$contactCount', colors),
+          const SizedBox(height: 8),
           _buildMacStatusRow('Last Sync', 'Just now', colors),
         ],
       ),
@@ -539,16 +554,17 @@ class _HomeScreenState extends State<HomeScreen> {
       alignment: Alignment.center,
       children: [
         Container(
+          height: 44,
           decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: colors.surface.withAlpha(100)),
+            color: Colors.white.withAlpha(13), // rgba(255,255,255,0.05)
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withAlpha(30)), // rgba(255,255,255,0.12)
           ),
           child: Row(
             children: [
-              _buildPhoneModeSegment('normal', '🔔', 'Normal', colors, ws),
-              _buildPhoneModeSegment('vibrate', '📳', 'Vibrate', colors, ws),
-              _buildPhoneModeSegment('silent', '🔕', 'Silent', colors, ws),
+              _buildPhoneModeSegment('normal', Icons.notifications_none, 'Normal', colors, ws),
+              _buildPhoneModeSegment('vibrate', Icons.vibration, 'Vibrate', colors, ws),
+              _buildPhoneModeSegment('silent', Icons.notifications_off, 'Silent', colors, ws),
             ],
           ),
         ),
@@ -558,7 +574,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPhoneModeSegment(String mode, String icon, String tooltip, CustomColors colors, WebSocketService ws) {
+  Widget _buildPhoneModeSegment(String mode, IconData icon, String tooltip, CustomColors colors, WebSocketService ws) {
     final isSelected = _phoneMode == mode;
     return Expanded(
       child: InkWell(
@@ -570,17 +586,18 @@ class _HomeScreenState extends State<HomeScreen> {
           });
           ws.setRingerMode(mode);
         },
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? colors.accent.withAlpha(80) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: isSelected ? colors.accent : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
           ),
+          margin: const EdgeInsets.all(2),
           child: Center(
-            child: Text(
+            child: Icon(
               icon,
-              style: TextStyle(fontSize: 16, color: isSelected ? colors.lightText : colors.lightText.withAlpha(120)),
+              size: 20,
+              color: isSelected ? Colors.white : colors.lightText.withAlpha(120),
             ),
           ),
         ),
@@ -592,7 +609,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         _buildActionTile(
-          icon: '🔦',
+          icon: Icons.flashlight_on,
           title: 'Flashlight',
           isActive: _flashlightOn,
           colors: colors,
@@ -601,8 +618,8 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
         _buildActionTile(
-          icon: '🔔',
-          title: _isRinging ? 'Stop Ringing' : 'Ring Phone',
+          icon: Icons.notifications_active,
+          title: 'Ring Phone',
           isActive: _isRinging,
           colors: colors,
           onTap: () {
@@ -610,7 +627,7 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
         _buildActionTile(
-          icon: '🔒',
+          icon: Icons.lock_outline,
           title: 'Lock',
           isActive: false,
           colors: colors,
@@ -621,9 +638,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildActionTile({
-    required String icon,
+    required IconData icon,
     required String title,
-    String? subtitle,
     required bool isActive,
     required CustomColors colors,
     required VoidCallback onTap,
@@ -632,40 +648,42 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.only(bottom: 8.0),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
+          height: 56,
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: isActive ? colors.accent.withAlpha(40) : Colors.transparent,
+            color: Colors.white.withAlpha(13), // rgba(255,255,255,0.05)
             border: Border.all(
-              color: isActive ? colors.accent : colors.surface,
+              color: isActive ? colors.accent.withAlpha(150) : Colors.white.withAlpha(30), // rgba(255,255,255,0.12)
               width: 1,
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: colors.accent.withAlpha(50),
+                      blurRadius: 12,
+                      spreadRadius: 1,
+                    )
+                  ]
+                : null,
           ),
           child: Row(
             children: [
-              Text(icon, style: const TextStyle(fontSize: 16)),
-              const SizedBox(width: 12),
+              Icon(icon, size: 22, color: isActive ? colors.accent : colors.lightText),
+              const SizedBox(width: 16),
               Expanded(
                 child: Text(
                   title,
                   style: TextStyle(
                     color: isActive ? colors.accent : colors.lightText,
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 16,
                   ),
                 ),
               ),
-              if (subtitle != null)
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: colors.accent,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
             ],
           ),
         ),
