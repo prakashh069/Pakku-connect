@@ -436,9 +436,21 @@ wss.on('connection', (ws, req) => {
 // ---------------------------------------------------------------------------
 // Start server
 // ---------------------------------------------------------------------------
-const port = process.env.PAKKU_WS_PORT || 8080;
+const port = process.env.CONNECTO_WS_PORT || process.env.PAKKU_WS_PORT || 8080;
 server.listen(port, () => {
-  log('server_listening', { port });
+  log('server_listening', { port, relay: 'Connecto Relay' });
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    errLog('port_in_use', {
+      port,
+      message: `Port ${port} is already in use. Set CONNECTO_WS_PORT to an available port and restart.`,
+    });
+    process.exit(1);
+  } else {
+    errLog('server_error', { error: err.message });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -457,12 +469,33 @@ const shutdown = (signal) => {
     process.exit(1);
   }, 5000);
 
-  server.close(() => {
-    clearTimeout(forceExit);
-    log('server_shutdown_complete');
-    process.exit(0);
+  wss.close(() => {
+    server.close(() => {
+      clearTimeout(forceExit);
+      log('server_shutdown_complete');
+      process.exit(0);
+    });
   });
 };
 
-process.on('SIGINT', shutdown);
+// ─────────────────────────────────────────────────────────────────────────────
+// Process-level safety net — prevents relay crashes from unhandled errors.
+// Logs the error with full context then exits so the process manager can
+// restart the relay cleanly (uptime > silent crash).
+// ─────────────────────────────────────────────────────────────────────────────
+process.on('uncaughtException', (err, origin) => {
+  errLog('uncaught_exception', { error: err.message, origin, stack: err.stack });
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  errLog('unhandled_rejection', {
+    reason: reason instanceof Error ? reason.message : String(reason),
+    stack:  reason instanceof Error ? reason.stack  : undefined,
+  });
+  // Do not exit on unhandled rejections — log and continue.
+  // If the rejection is in a critical path this will surface via other errors.
+});
+
+process.on('SIGINT',  shutdown);
 process.on('SIGTERM', shutdown);

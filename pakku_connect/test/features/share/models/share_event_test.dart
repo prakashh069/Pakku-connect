@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pakku_connect/features/share/models/share_event.dart';
-import 'package:pakku_connect/features/share/models/share_content.dart';
-import 'package:pakku_connect/features/share/constants/share_constants.dart';
+import 'package:connecto/features/share/models/share_event.dart';
+import 'package:connecto/features/share/models/share_content.dart';
+import 'package:connecto/features/share/constants/share_constants.dart';
 
 void main() {
   group('ShareEvent', () {

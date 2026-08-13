@@ -1,4 +1,4 @@
-# Pakku Connect — Documentation Set (v7.0)
+# Connecto — Documentation Set (v7.0)
 
 A LAN call-control bridge between an Android phone and a Mac: pairing,
 incoming-call popups, remote accept/decline, outgoing dial, contacts, and

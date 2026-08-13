@@ -1,4 +1,4 @@
-# Pakku Connect — Software Requirements Specification (SRS)
+# Connecto — Software Requirements Specification (SRS)
 
 **Version:** 7.0
 **Status:** Tier 1 — active build target
@@ -8,7 +8,7 @@
 
 ## 1. Purpose
 
-Pakku Connect lets a user see and control their Android phone's call state
+Connecto lets a user see and control their Android phone's call state
 from their Mac while both devices are on the same local network: an
 incoming-call popup on the Mac, remote accept/decline of that call, an
 outgoing dial from either device's contacts, and a native missed-call

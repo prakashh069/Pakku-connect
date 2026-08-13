@@ -1,4 +1,4 @@
-# Pakku Connect — Implementation Guide (v7.0)
+# Connecto — Implementation Guide (v7.0)
 
 **Target:** Working Tier‑1 only (pairing + signaling + remote accept/decline
 signal + outgoing dial + contacts + native missed‑call notification)
@@ -32,8 +32,8 @@ re-justified here.
 ```bash
 mkdir -p ~/projects/pakku-connect
 cd ~/projects/pakku-connect
-flutter create pakku_connect --platforms=android,macos --org com.pakku
-cd pakku_connect
+flutter create connecto --platforms=android,macos --org com.pakku
+cd connecto
 flutter config --enable-macos-desktop
 ```
 
@@ -82,7 +82,7 @@ P12_PASS=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 24)
 cat > .env <<EOF
 PAKKU_SECRET=$SECRET
 P12_PASSWORD=$P12_PASS
-PAKKU_WS_PORT=8080
+CONNECTO_WS_PORT=8080
 EOF
 echo "Secrets written to .env — never commit"
 ```
@@ -154,7 +154,7 @@ after this (see [ADR-004](./adr/ADR-004-self-signed-tls.md)).
 `pubspec.yaml`:
 
 ```yaml
-name: pakku_connect
+name: connecto
 description: Call control and notification bridge between Android and macOS.
 publish_to: 'none'
 version: 1.0.0+1
@@ -381,9 +381,9 @@ class CryptoService {
     final header = {'alg': 'HS256', 'typ': 'JWT'};
     final now = DateTime.now();
     final payload = <String, dynamic>{
-      'iss': 'pakku_connect',
+      'iss': 'connecto',
       'sub': deviceId,
-      'aud': 'pakku_connect_client',
+      'aud': 'connecto_client',
       'iat': now.millisecondsSinceEpoch ~/ 1000,
       'exp': now.add(expiry).millisecondsSinceEpoch ~/ 1000,
       'nbf': now.millisecondsSinceEpoch ~/ 1000,
@@ -823,7 +823,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
       ip = await info.getWifiIP() ?? '127.0.0.1';
     } catch (_) {}
 
-    final port = int.tryParse(dotenv.env['PAKKU_WS_PORT'] ?? '8080') ?? 8080;
+    final port = int.tryParse(dotenv.env['CONNECTO_WS_PORT'] ?? '8080') ?? 8080;
 
     String? certFp;
     try {
@@ -856,7 +856,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: const Text('Pakku Connect — Pair'),
+        title: const Text('Connecto — Pair'),
         backgroundColor: colors.surface,
       ),
       body: Center(
@@ -1222,7 +1222,7 @@ class PakkuApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'Pakku Connect',
+        title: 'Connecto',
         theme: buildAppTheme(),
         builder: (context, child) {
           return Stack(
@@ -1268,7 +1268,7 @@ class _RootRouterState extends State<RootRouter> {
         manager.handleCallState(state);
       };
 
-      final port = dotenv.env['PAKKU_WS_PORT'] ?? '8080';
+      final port = dotenv.env['CONNECTO_WS_PORT'] ?? '8080';
       ws.connect('wss://127.0.0.1:$port');
     } else {
       final prefs = await SharedPreferences.getInstance();
@@ -1521,7 +1521,7 @@ class PhoneStateService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Pakku Connect")
+            .setContentTitle("Connecto")
             .setContentText("Listening for calls")
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -1876,7 +1876,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => console.log('Client disconnected'));
 });
 
-const port = process.env.PAKKU_WS_PORT || 8080;
+const port = process.env.CONNECTO_WS_PORT || 8080;
 server.listen(port, () => {
   console.log(`WSS server listening on port ${port}`);
 });
@@ -1964,7 +1964,7 @@ trust-all.
 ```dart
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:pakku_connect/core/services/crypto_service.dart';
+import 'package:connecto/core/services/crypto_service.dart';
 
 void main() {
   setUpAll(() {

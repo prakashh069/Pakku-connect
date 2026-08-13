@@ -1,4 +1,4 @@
-# Pakku Connect — Technical Design Document (TDD)
+# Connecto — Technical Design Document (TDD)
 
 **Version:** 7.0
 **Companion documents:** [01_SRS.md](./01_SRS.md) · [03_API_PROTOCOL.md](./03_API_PROTOCOL.md) · [04_IMPLEMENTATION_GUIDE.md](./04_IMPLEMENTATION_GUIDE.md) · [ADRs](./adr/)
@@ -228,7 +228,7 @@ implementation.
 
 ## 7. Threat Model
 
-Since Pakku Connect combines TLS, JWT pairing, QR distribution, and a
+Since Connecto combines TLS, JWT pairing, QR distribution, and a
 local network, each is examined for what it does and does not protect
 against.
 

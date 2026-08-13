@@ -1,10 +1,10 @@
-# Pakku Connect — API / Protocol Specification
+# Connecto — API / Protocol Specification
 
 **Version:** 7.0 (protocol implicitly v1 — see §4 versioning note)
 **Transport:** WSS (WebSocket over TLS), one JSON object per text frame
 **Companion documents:** [02_TDD.md](./02_TDD.md) · [ADR-001](./adr/ADR-001-websocket-vs-grpc.md) · [ADR-002](./adr/ADR-002-jwt-pairing.md)
 
-This is the single canonical source for every message Pakku Connect sends
+This is the single canonical source for every message Connecto sends
 over the wire. If code and this document ever disagree, this document is
 correct and the code has a bug — update code to match, not the reverse,
 unless the change is deliberate and this doc is updated in the same
@@ -56,9 +56,9 @@ channel — it is consumed entirely at scan time, offline.
 
 | Claim | Type | Required | Meaning |
 |---|---|---|---|
-| `iss` | string | yes | Always `"pakku_connect"` |
+| `iss` | string | yes | Always `"connecto"` |
 | `sub` | string | yes | The issuing device's `device_id` |
-| `aud` | string | yes | Always `"pakku_connect_client"` |
+| `aud` | string | yes | Always `"connecto_client"` |
 | `iat` | number (unix seconds) | yes | Issued-at time |
 | `exp` | number (unix seconds) | yes | Expiry — default 5 minutes after `iat` |
 | `nbf` | number (unix seconds) | yes | Not-before — equal to `iat` |

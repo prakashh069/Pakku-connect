@@ -88,7 +88,7 @@ class _ScanScreenState extends State<ScanScreen> {
         'saveWsEndpoint',
         {'ip': ip, 'port': port, 'certFp': certFp, 'hmacSecret': hmacSecret},
       );
-      
+
       const storage = FlutterSecureStorage();
       await storage.write(key: 'ws_ip', value: ip);
       await storage.write(key: 'ws_port', value: port.toString());
@@ -96,16 +96,17 @@ class _ScanScreenState extends State<ScanScreen> {
       if (certFp != null) {
         await storage.write(key: 'cert_fp', value: certFp);
       }
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('paired', true);
 
       final granted = await _requestPermissions();
 
       if (granted) {
-        final hasNotifAccess = await _platform.invokeMethod<bool>('hasNotificationAccess') ?? false;
+        final hasNotifAccess =
+            await _platform.invokeMethod<bool>('hasNotificationAccess') ?? false;
         if (!hasNotifAccess) {
-            await _platform.invokeMethod('requestNotificationAccess');
+          await _platform.invokeMethod('requestNotificationAccess');
         }
 
         await _platform.invokeMethod('startPhoneStateService');
@@ -122,7 +123,10 @@ class _ScanScreenState extends State<ScanScreen> {
       } else {
         setState(() {
           _verifying = false;
-          _error = 'READ_PHONE_STATE is required for remote call control.\n\nREAD_CONTACTS is required for contact synchronization.\n\nPlease grant these permissions in Android Settings to use the app.';
+          _error =
+              'READ_PHONE_STATE is required for remote call control.\n\n'
+              'READ_CONTACTS is required for contact synchronization.\n\n'
+              'Please grant these permissions in Android Settings to use the app.';
         });
       }
     } catch (e, st) {
@@ -136,88 +140,130 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<CustomColors>()!;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Header & overlay colours — brand-aware
+    final headerBg = isDark ? colors.surface : colors.surface;
+    final headerText = colors.textSecondary;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Scan QR code', style: TextStyle(color: Colors.white, fontSize: 20)),
-        backgroundColor: const Color(0xFF111B21),
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: headerBg,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        title: Image.asset(
+          isDark
+              ? 'assets/images/connecto_logo_dark.png'
+              : 'assets/images/connecto_logo_light.png',
+          height: 28,
+          fit: BoxFit.contain,
+        ),
+        centerTitle: true,
       ),
       body: Stack(
         children: [
+          // Camera feed
           MobileScanner(
             controller: controller,
             onDetect: _onDetect,
             errorBuilder: (context, error) {
-              debugPrint('ScanScreen: MobileScanner errorBuilder triggered: ${error.errorCode} - ${error.errorDetails?.message}');
+              debugPrint(
+                  'ScanScreen: MobileScanner errorBuilder triggered: ${error.errorCode} - ${error.errorDetails?.message}');
               return Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error, color: Colors.white, size: 50),
+                    Icon(Icons.error_outline,
+                        color: colors.danger, size: 52),
                     const SizedBox(height: 12),
                     Text(
                       'Scanner Error: ${error.errorCode}',
-                      style: const TextStyle(color: Colors.white),
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
                     ),
                   ],
                 ),
               );
             },
           ),
-          
-          // Translucent overlay with a clear square hole
+
+          // Translucent overlay with branded scan hole
           Positioned.fill(
             child: CustomPaint(
-              painter: ScannerOverlayPainter(),
+              painter: _ScannerOverlayPainter(
+                borderColor: colors.primary,
+                accentColor: colors.accent,
+              ),
             ),
           ),
 
-          // Top instructional text background
+          // Top instructional banner
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: Container(
-              color: const Color(0xFF111B21),
-              padding: const EdgeInsets.only(left: 32, right: 32, top: 16, bottom: 24),
-              child: const Text(
+              color: headerBg.withAlpha(230),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+              child: Text(
                 'Open the Connecto Mac app on your computer to pair.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 15,
+                  color: headerText,
+                  fontSize: 14,
+                  height: 1.4,
                 ),
               ),
             ),
           ),
 
-          if (_verifying) const Center(child: CircularProgressIndicator(color: Colors.white)),
+          // Verifying spinner
+          if (_verifying)
+            const Center(
+                child: CircularProgressIndicator(color: Colors.white)),
+
+          // Error card
           if (_error != null)
             Center(
               child: Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(28),
                 margin: const EdgeInsets.symmetric(horizontal: 24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF111B21),
-                  borderRadius: BorderRadius.circular(12),
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colors.border),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 16), textAlign: TextAlign.center),
+                    Icon(Icons.error_outline,
+                        color: colors.danger, size: 36),
+                    const SizedBox(height: 16),
+                    Text(
+                      _error!,
+                      style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 14,
+                          height: 1.5),
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 24),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
+                        backgroundColor: colors.primary,
+                        foregroundColor: colors.onPrimary,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 28, vertical: 12),
                       ),
                       onPressed: () {
                         setState(() => _error = null);
                         controller.start();
                       },
-                      child: const Text('Retry'),
+                      child: const Text('Try Again',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
                     ),
                   ],
                 ),
@@ -229,27 +275,96 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 }
 
-class ScannerOverlayPainter extends CustomPainter {
+// ---------------------------------------------------------------------------
+// Branded scanner overlay
+// ---------------------------------------------------------------------------
+class _ScannerOverlayPainter extends CustomPainter {
+  final Color borderColor;
+  final Color accentColor;
+
+  const _ScannerOverlayPainter({
+    required this.borderColor,
+    required this.accentColor,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    final backgroundPath = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-    
-    // QR Code scanner hole size
-    final scanAreaSize = size.width * 0.70; 
+    final backgroundPath =
+        Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final scanAreaSize = size.width * 0.70;
     final scanAreaRect = Rect.fromCenter(
       center: Offset(size.width / 2, size.height / 2),
       width: scanAreaSize,
       height: scanAreaSize,
     );
-    final holePath = Path()..addRRect(RRect.fromRectAndRadius(scanAreaRect, const Radius.circular(12)));
+    final holePath = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          scanAreaRect, const Radius.circular(16)));
 
-    // Create a path that is the background minus the hole
-    final path = Path.combine(PathOperation.difference, backgroundPath, holePath);
-    
-    final paint = Paint()..color = Colors.black.withOpacity(0.55);
+    final path =
+        Path.combine(PathOperation.difference, backgroundPath, holePath);
+    final paint = Paint()..color = Colors.black.withValues(alpha: 0.60);
     canvas.drawPath(path, paint);
+
+    // Branded corner brackets
+    _drawCorners(canvas, scanAreaRect);
+  }
+
+  void _drawCorners(Canvas canvas, Rect rect) {
+    const cornerLen = 24.0;
+    const strokeWidth = 3.0;
+    const r = 4.0;
+
+    final paint = Paint()
+      ..color = borderColor
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Top-left
+    canvas.drawLine(
+        rect.topLeft + const Offset(r, 0),
+        rect.topLeft + const Offset(cornerLen, 0),
+        paint);
+    canvas.drawLine(
+        rect.topLeft + const Offset(0, r),
+        rect.topLeft + const Offset(0, cornerLen),
+        paint);
+
+    // Top-right
+    canvas.drawLine(
+        rect.topRight - const Offset(cornerLen, 0),
+        rect.topRight - const Offset(r, 0),
+        paint);
+    canvas.drawLine(
+        rect.topRight + const Offset(0, r),
+        rect.topRight + const Offset(0, cornerLen),
+        paint);
+
+    // Bottom-left
+    canvas.drawLine(
+        rect.bottomLeft + const Offset(r, 0),
+        rect.bottomLeft + const Offset(cornerLen, 0),
+        paint);
+    canvas.drawLine(
+        rect.bottomLeft - const Offset(0, cornerLen),
+        rect.bottomLeft - const Offset(0, r),
+        paint);
+
+    // Bottom-right
+    canvas.drawLine(
+        rect.bottomRight - const Offset(cornerLen, 0),
+        rect.bottomRight - const Offset(r, 0),
+        paint);
+    canvas.drawLine(
+        rect.bottomRight - const Offset(0, cornerLen),
+        rect.bottomRight - const Offset(0, r),
+        paint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _ScannerOverlayPainter oldDelegate) =>
+      oldDelegate.borderColor != borderColor ||
+      oldDelegate.accentColor != accentColor;
 }

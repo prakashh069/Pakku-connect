@@ -1,7 +1,7 @@
 {
-  "name": "pakku_connect",
+  "name": "connecto",
   "version": "1.0.0",
-  "description": "A new Flutter project.",
+  "description": "Connecto relay server — Connect · Flow · Together",
   "main": "index.js",
   "directories": {
     "doc": "docs",

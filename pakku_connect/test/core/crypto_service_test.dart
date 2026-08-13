@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pakku_connect/core/services/crypto_service.dart';
+import 'package:connecto/core/services/crypto_service.dart';
 
 void main() {
   const testSecret = 'test_secret_key_123456';

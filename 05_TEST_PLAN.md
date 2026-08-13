@@ -1,4 +1,4 @@
-# Pakku Connect — Test Plan
+# Connecto — Test Plan
 
 **Version:** 7.0
 **Companion documents:** [01_SRS.md](./01_SRS.md) · [02_TDD.md](./02_TDD.md) · [03_API_PROTOCOL.md](./03_API_PROTOCOL.md) · [04_IMPLEMENTATION_GUIDE.md](./04_IMPLEMENTATION_GUIDE.md)

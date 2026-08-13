@@ -1,4 +1,4 @@
-import 'package:pakku_connect/core/models/call.dart';
+import 'package:connecto/core/models/call.dart';
 
 /// A generalized, abstract interface to decouple the UI surface from the CallManager.
 abstract class CallPresenter {

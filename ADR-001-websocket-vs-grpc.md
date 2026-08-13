@@ -6,7 +6,7 @@
 
 ## Context
 
-Pakku Connect needs a bidirectional, low-latency channel between exactly two
+Connecto needs a bidirectional, low-latency channel between exactly two
 LAN peers (an Android phone and a Mac) to relay small, infrequent signaling
 events: `incoming_call`, `call_state`, `answer_call`, `reject_call`, `dial`.
 No audio or video media ever crosses this channel (explicitly forbidden —
@@ -55,7 +55,7 @@ carrying newline-free JSON text frames.
   note).
 - We give up gRPC's built-in flow control and multiplexing. Not needed —
   this is a single low-frequency stream, not a data-heavy pipe.
-- If Pakku Connect ever needs multiple concurrent typed RPC-style calls
+- If Connecto ever needs multiple concurrent typed RPC-style calls
   (e.g. a future "sync call history" bulk endpoint), gRPC should be
   revisited at that time rather than retrofitted now.
 

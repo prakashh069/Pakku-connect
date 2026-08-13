@@ -6,7 +6,6 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/services/crypto_service.dart';
 import '../../../core/constants/app_theme.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/websocket_service.dart';
 
@@ -159,8 +158,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     final textColor = isDark ? Colors.white : Colors.black87;
-    final subTextColor = isDark ? Colors.white70 : Colors.black54;
-    final borderColor = isDark ? Colors.white24 : Colors.black12;
+    final borderColor = isDark ? Colors.white24 : colors.primary;
     final cardColor = isDark ? colors.surface : Colors.white;
 
     return Scaffold(
@@ -224,10 +222,10 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                             child: Text(
                               'Need help? ↗',
                               style: TextStyle(
-                                color: textColor,
+                                color: colors.accent,
                                 fontWeight: FontWeight.w500,
                                 decoration: TextDecoration.underline,
-                                decorationColor: textColor,
+                                decorationColor: colors.accent,
                               ),
                             ),
                           ),
@@ -239,10 +237,10 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                             child: Text(
                               'Generate new code >',
                               style: TextStyle(
-                                color: textColor,
+                                color: colors.primary,
                                 fontWeight: FontWeight.w500,
                                 decoration: TextDecoration.underline,
-                                decorationColor: textColor,
+                                decorationColor: colors.primary,
                               ),
                             ),
                           ),
@@ -274,11 +272,11 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                           ),
                           eyeStyle: const QrEyeStyle(
                             eyeShape: QrEyeShape.square,
-                            color: Colors.black87,
+                            color: Color(0xFF122C25),
                           ),
                           dataModuleStyle: const QrDataModuleStyle(
                             dataModuleShape: QrDataModuleShape.square,
-                            color: Colors.black87,
+                            color: Color(0xFF122C25),
                           ),
                         ),
                       )
@@ -328,16 +326,19 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
           Column(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: 28,
+                height: 28,
                 decoration: BoxDecoration(
-                  border: Border.all(color: borderColor),
+                  color: borderColor,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
                     number.toString(),
-                    style: TextStyle(fontSize: 12, color: textColor),
+                    style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600),
                   ),
                 ),
               ),

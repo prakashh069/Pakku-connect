@@ -3,9 +3,9 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pakku_connect/features/clipboard/services/clipboard_sync_manager.dart';
-import 'package:pakku_connect/core/services/platform_transport.dart';
-import 'package:pakku_connect/features/share/models/share_event.dart';
+import 'package:connecto/features/clipboard/services/clipboard_sync_manager.dart';
+import 'package:connecto/core/services/platform_transport.dart';
+import 'package:connecto/features/share/models/share_event.dart';
 
 class FuzzFakeTransport implements PlatformTransport {
   final StreamController<Map<String, dynamic>> _controller = StreamController.broadcast();

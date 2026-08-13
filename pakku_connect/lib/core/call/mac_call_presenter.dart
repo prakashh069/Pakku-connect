@@ -1,5 +1,5 @@
 import 'package:flutter/services.dart';
-import 'package:pakku_connect/core/models/call.dart';
+import 'package:connecto/core/models/call.dart';
 import 'call_presenter.dart';
 
 class MacCallPresenter implements CallPresenter {

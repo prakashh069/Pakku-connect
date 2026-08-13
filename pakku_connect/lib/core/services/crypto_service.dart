@@ -35,9 +35,9 @@ class CryptoService {
     final header = {'alg': 'HS256', 'typ': 'JWT'};
     final now = DateTime.now();
     final payload = <String, dynamic>{
-      'iss': 'pakku_connect',
+      'iss': 'connecto',
       'sub': deviceId,
-      'aud': 'pakku_connect_client',
+      'aud': 'connecto_client',
       'iat': now.millisecondsSinceEpoch ~/ 1000,
       'exp': now.add(expiry).millisecondsSinceEpoch ~/ 1000,
       'nbf': now.millisecondsSinceEpoch ~/ 1000,
@@ -83,11 +83,11 @@ class CryptoService {
       final payload = json.decode(_unb64(parts[1])) as Map<String, dynamic>;
       
       // Verify required standard claims
-      if (payload['iss'] != 'pakku_connect') {
+      if (payload['iss'] != 'connecto') {
         debugPrint('CryptoService: Invalid issuer.');
         return null;
       }
-      if (payload['aud'] != 'pakku_connect_client') {
+      if (payload['aud'] != 'connecto_client') {
         debugPrint('CryptoService: Invalid audience.');
         return null;
       }

@@ -26,11 +26,11 @@ WebSocketService? _wsService;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const PakkuApp());
+  runApp(const ConnectoApp());
 }
 
-class PakkuApp extends StatelessWidget {
-  const PakkuApp({super.key});
+class ConnectoApp extends StatelessWidget {
+  const ConnectoApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -330,7 +330,32 @@ class _RootRouterState extends State<RootRouter> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Branded loading splash — logo + indicator
+              LayoutBuilder(builder: (ctx, _) {
+                final isDark = MediaQuery.platformBrightnessOf(ctx) == Brightness.dark;
+                return Image.asset(
+                  isDark
+                      ? 'assets/images/connecto_logo_dark.png'
+                      : 'assets/images/connecto_logo_light.png',
+                  height: 40,
+                  fit: BoxFit.contain,
+                );
+              }),
+              const SizedBox(height: 28),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     if (Platform.isMacOS) {
@@ -422,33 +447,72 @@ class _HomeScreenState extends State<HomeScreen> {
       BuildContext context, CustomColors colors, WebSocketService ws) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.symmetric(horizontal: 28.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.phonelink_ring,
-              size: 64,
-              color: colors.accent,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Connecto Active',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: colors.lightText,
+            // Status card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: colors.border),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: colors.success.withAlpha(26),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.phonelink_ring,
+                        size: 28, color: colors.success),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Connecto Active',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Background service running',
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: colors.textSecondary),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    height: 1,
+                    color: colors.border,
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.circle,
+                          size: 8, color: colors.success),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Ready for call & contact requests',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Background service is running and ready to handle call & contact requests.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: colors.lightText.withAlpha(178),
-              ),
-            ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
             OutlinedButton.icon(
               onPressed: () async {
                 final prefs = await SharedPreferences.getInstance();
@@ -457,14 +521,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.of(context).pushReplacementNamed('/');
                 }
               },
-              icon: const Icon(Icons.qr_code_scanner, color: Colors.white70),
-              label: const Text('Unpair & Scan New Mac', style: TextStyle(color: Colors.white)),
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Unpair & Scan New Mac'),
               style: OutlinedButton.styleFrom(
-                side: BorderSide(color: colors.accent.withAlpha(150)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                foregroundColor: colors.primary,
+                side: BorderSide(color: colors.primary.withAlpha(160)),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                    borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ],
@@ -600,9 +665,9 @@ class _HomeScreenState extends State<HomeScreen> {
         Container(
           height: 44,
           decoration: BoxDecoration(
-            color: Colors.white.withAlpha(13), // rgba(255,255,255,0.05)
+            color: colors.surface2,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withAlpha(30)), // rgba(255,255,255,0.12)
+            border: Border.all(color: colors.border),
           ),
           child: Row(
             children: [
@@ -698,9 +763,9 @@ class _HomeScreenState extends State<HomeScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: Colors.white.withAlpha(13), // rgba(255,255,255,0.05)
+            color: colors.surface2,
             border: Border.all(
-              color: isActive ? colors.accent.withAlpha(150) : Colors.white.withAlpha(30), // rgba(255,255,255,0.12)
+              color: isActive ? colors.accent.withAlpha(150) : colors.border,
               width: 1,
             ),
             borderRadius: BorderRadius.circular(16),
@@ -751,11 +816,11 @@ class _HomeScreenState extends State<HomeScreen> {
           Container(
             width: double.infinity,
             color: widget.sessionState == DeviceSessionState.paused
-                ? Colors.orange.shade900
+                ? colors.warning.withAlpha(220)
                 : (widget.sessionState == DeviceSessionState.connecting ||
                         widget.sessionState == DeviceSessionState.reconnecting)
-                    ? Colors.blue.shade900
-                    : Colors.red.shade900,
+                    ? colors.primary.withAlpha(220)
+                    : colors.danger.withAlpha(220),
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
               widget.sessionState == DeviceSessionState.paused

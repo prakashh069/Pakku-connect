@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pakku_connect/features/share/handlers/share_handler_registry.dart';
-import 'package:pakku_connect/features/share/handlers/share_handler.dart';
-import 'package:pakku_connect/features/share/models/share_event.dart';
-import 'package:pakku_connect/features/share/models/share_content.dart';
-import 'package:pakku_connect/features/share/constants/share_constants.dart';
+import 'package:connecto/features/share/handlers/share_handler_registry.dart';
+import 'package:connecto/features/share/handlers/share_handler.dart';
+import 'package:connecto/features/share/models/share_event.dart';
+import 'package:connecto/features/share/models/share_content.dart';
+import 'package:connecto/features/share/constants/share_constants.dart';
 
 class FakeHandler implements ShareHandler {
   final String supportedMime;

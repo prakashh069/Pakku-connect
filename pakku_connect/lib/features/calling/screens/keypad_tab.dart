@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:pakku_connect/core/constants/app_theme.dart';
-import 'package:pakku_connect/features/calling/services/call_manager.dart';
-import 'package:pakku_connect/core/services/websocket_service.dart';
+import 'package:connecto/core/constants/app_theme.dart';
+import 'package:connecto/features/calling/services/call_manager.dart';
+import 'package:connecto/core/services/websocket_service.dart';
 
 class KeypadTab extends StatefulWidget {
   final bool isActive;
