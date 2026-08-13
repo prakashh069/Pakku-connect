@@ -1,0 +1,22 @@
+{
+  "name": "connecto",
+  "version": "1.0.0",
+  "description": "Connecto relay server — Connect · Flow · Together",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "ws": "^8.21.1"
+  }
+}
