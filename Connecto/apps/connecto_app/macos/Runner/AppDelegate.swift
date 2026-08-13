@@ -29,7 +29,7 @@ class AppDelegate: FlutterAppDelegate {
   func setupChannels(flutterViewController: FlutterViewController, window: NSWindow) {
       mainFlutterWindow = window
       
-      flutterMethodChannel = FlutterMethodChannel(name: "com.pakku.connect/menuBar",
+      flutterMethodChannel = FlutterMethodChannel(name: "com.connecto.app/menuBar",
                                                   binaryMessenger: flutterViewController.engine.binaryMessenger)
       
       flutterMethodChannel?.setMethodCallHandler({ [weak self] (call, result) in
@@ -169,7 +169,7 @@ class MacClipboardSync {
 
     func setup(binaryMessenger: FlutterBinaryMessenger) {
         methodChannel = FlutterMethodChannel(
-            name: "com.pakku.connect/macClipboard",
+            name: "com.connecto.app/macClipboard",
             binaryMessenger: binaryMessenger
         )
         

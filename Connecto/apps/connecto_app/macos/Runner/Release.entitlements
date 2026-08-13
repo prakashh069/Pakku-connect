@@ -8,7 +8,7 @@
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)com.pakku.pakkuConnect</string>
+		<string>$(AppIdentifierPrefix)com.connecto.app</string>
 	</array>
 </dict>
 </plist>

@@ -49,7 +49,7 @@ class ClipboardPanelController {
 
     func setup(binaryMessenger: FlutterBinaryMessenger) {
         methodChannel = FlutterMethodChannel(
-            name: "com.pakku.connect/clipboardShare",
+            name: "com.connecto.app/clipboardShare",
             binaryMessenger: binaryMessenger
         )
         methodChannel?.setMethodCallHandler { [weak self] (call, result) in

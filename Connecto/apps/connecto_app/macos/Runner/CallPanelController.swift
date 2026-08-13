@@ -20,7 +20,7 @@ class CallPanelController {
     private init() {}
     
     func setup(binaryMessenger: FlutterBinaryMessenger) {
-        methodChannel = FlutterMethodChannel(name: "com.pakku.connect/callPanel", binaryMessenger: binaryMessenger)
+        methodChannel = FlutterMethodChannel(name: "com.connecto.app/callPanel", binaryMessenger: binaryMessenger)
         
         methodChannel?.setMethodCallHandler { [weak self] (call, result) in
             switch call.method {
