@@ -19,8 +19,8 @@ const errLog = (event, details = {}) =>
 // ---------------------------------------------------------------------------
 let cert, key;
 try {
-  cert = fs.readFileSync('certs/device.crt');
-  key  = fs.readFileSync('certs/device.key');
+  cert = fs.readFileSync(path.resolve(__dirname, 'certs/device.crt'));
+  key  = fs.readFileSync(path.resolve(__dirname, 'certs/device.key'));
 } catch (e) {
   errLog('tls_cert_read_failed', { error: e.message });
   process.exit(1);

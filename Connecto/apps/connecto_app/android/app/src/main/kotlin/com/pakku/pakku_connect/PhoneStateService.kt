@@ -302,7 +302,24 @@ class PhoneStateService : Service() {
             val ip = prefs.getString("ws_ip", "") ?: ""
             val port = prefs.getInt("ws_port", 0)
             val certFp = prefs.getString("cert_fp", "") ?: ""
-            val hmacSecret = prefs.getString("hmac_secret", "") ?: ""
+            
+            var hmacSecret = ""
+            try {
+                val masterKey = androidx.security.crypto.MasterKey.Builder(this@PhoneStateService)
+                    .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+
+                val securePrefs = androidx.security.crypto.EncryptedSharedPreferences.create(
+                    this@PhoneStateService,
+                    "FlutterSecureKeyStorage",
+                    masterKey,
+                    androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+                hmacSecret = securePrefs.getString("VGhpc0lzVGhlUHJlZml4hmacSecret", "") ?: ""
+            } catch (e: Exception) {
+                android.util.Log.e("PhoneStateService", "Failed to read EncryptedSharedPreferences for hmacSecret: ${e.message}")
+            }
 
             // Validate configuration thoroughly before proceeding
             if (ip.isEmpty() || port !in 1..65535) {
