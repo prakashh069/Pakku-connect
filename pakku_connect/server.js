@@ -61,6 +61,29 @@ const BLACKLIST_DURATION_MS   = 60 * 1000;   // 60 s blacklist duration
 // ---------------------------------------------------------------------------
 const failureTracker = new Map();  // ip -> { count, windowStart }
 const blacklist      = new Map();  // ip -> expiresAt (ms epoch)
+let unauthenticatedCount = 0;
+const seenNonces = new Map(); // jti -> expiration timestamp
+
+// Message directionality validation sets
+const MAC_ONLY_TYPES = new Set([
+  'dial', 'answer_call', 'reject_call', 'end_call', 'set_ringer_mode', 
+  'device_action', 'contacts_request', 'request.call_history'
+]);
+
+const ANDROID_ONLY_TYPES = new Set([
+  'incoming_call', 'call_state', 'contacts', 'sync.call_history',
+  'battery_status', 'device_state', 'action_result'
+]);
+
+// Periodic cleanup of expired nonces
+setInterval(() => {
+  const now = Math.floor(Date.now() / 1000);
+  for (const [jti, exp] of seenNonces.entries()) {
+    if (now > exp) {
+      seenNonces.delete(jti);
+    }
+  }
+}, 60 * 1000);
 
 function isBlacklisted(ip) {
   const expires = blacklist.get(ip);
@@ -94,7 +117,7 @@ function recordFailure(ip) {
 // ---------------------------------------------------------------------------
 // Track unauthenticated connection count
 // ---------------------------------------------------------------------------
-let unauthenticatedCount = 0;
+
 
 // ---------------------------------------------------------------------------
 // Stale connection cleanup (Ping/Pong heartbeat)
@@ -152,7 +175,10 @@ wss.on('connection', (ws, req) => {
   // ---------------------------------------------------------------------------
   // Cleanup helper — called on every close/error path
   // ---------------------------------------------------------------------------
+  let isCleanedUp = false;
   function cleanup() {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
     clearTimeout(handshakeTimer);
     if (!ws.authenticated) {
       unauthenticatedCount = Math.max(0, unauthenticatedCount - 1);
@@ -308,6 +334,24 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // Replay Attack Protection via JTI (Nonce)
+      if (!jwtPayloadObj.jti) {
+        errLog('missing_jti', { ip });
+        recordFailure(ip);
+        ws.close(1008, 'Missing JTI');
+        return;
+      }
+      
+      if (seenNonces.has(jwtPayloadObj.jti)) {
+        errLog('jwt_replay_detected', { ip, reason: 'nonce_reused' });
+        recordFailure(ip);
+        ws.close(1008, 'Replay detected');
+        return;
+      }
+      
+      // Valid fresh JWT. Cache the nonce until it expires.
+      seenNonces.set(jwtPayloadObj.jti, jwtPayloadObj.exp);
+
       // 'hello' received and verified — mark as authenticated and transition to active state.
       ws.authenticated = true;
       unauthenticatedCount = Math.max(0, unauthenticatedCount - 1);
@@ -367,6 +411,17 @@ wss.on('connection', (ws, req) => {
 
     const sender = ws.clientName;
     console.log(`Received ${data.type}`);
+    
+    // Priority 3: Message Directionality Validation
+    if (sender === 'Android' && MAC_ONLY_TYPES.has(data.type)) {
+      errLog('BLOCKED_DIRECTION', { sender, type: data.type });
+      return;
+    }
+    if (sender === 'macOS' && ANDROID_ONLY_TYPES.has(data.type)) {
+      errLog('BLOCKED_DIRECTION', { sender, type: data.type });
+      return;
+    }
+
     log('message_received', { from: sender, type: data.type });
 
     // Forward verbatim to all other authenticated clients

@@ -644,11 +644,18 @@ class PhoneStateService : Service() {
             put("alg", "HS256")
             put("typ", "JWT")
         }
+        val now = System.currentTimeMillis() / 1000
         val payload = JSONObject().apply {
+            put("iss", "pakku_connect")
+            put("sub", "android_" + android.os.Build.MODEL)
+            put("aud", "pakku_connect_client")
+            put("iat", now)
+            put("nbf", now)
+            put("exp", now + 300)
             put("device_id", "android_" + android.os.Build.MODEL)
             put("device_name", deviceName)
             put("platform", platform)
-            put("exp", (System.currentTimeMillis() / 1000) + 300)
+            put("jti", java.util.UUID.randomUUID().toString())
         }
         val h = android.util.Base64.encodeToString(header.toString().toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
         val p = android.util.Base64.encodeToString(payload.toString().toByteArray(), android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)

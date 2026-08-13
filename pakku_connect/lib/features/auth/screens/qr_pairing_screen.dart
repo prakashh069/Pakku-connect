@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:network_info_plus/network_info_plus.dart';
@@ -22,13 +23,46 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
   bool _generating = false;
 
   // Keep the secret in memory for this session so rebuilds don't regenerate it.
-  // Regeneration only happens on first load or when user taps "Generate New Code".
+  // Regeneration only happens on first load (no existing secret) or when
+  // the user explicitly taps "Generate New Code".
   String? _sessionHmacSecret;
+
+  // Shared SecureStorage instance so both load and write use identical options.
+  static const _secureStorage = FlutterSecureStorage(
+    mOptions: MacOsOptions(
+      usesDataProtectionKeychain: !kDebugMode,
+    ),
+  );
 
   @override
   void initState() {
     super.initState();
-    _generateQR(forceNew: true);
+    // On screen open: load the existing secret first so an in-progress pairing
+    // session is never broken by a screen rebuild or back-navigation.
+    // forceNew=false means "use Keychain secret if available, generate only
+    // if nothing exists yet."
+    _loadExistingSecretOrGenerate();
+  }
+
+  /// Reads the current hmacSecret from the Keychain.
+  /// - If a secret is found, reuses it for the QR so an existing pairing
+  ///   session stays valid across screen rebuilds.
+  /// - If no secret exists, falls through to _generateQR which creates one.
+  Future<void> _loadExistingSecretOrGenerate() async {
+    try {
+      final existing = await _secureStorage.read(key: 'hmacSecret');
+      if (existing != null && existing.isNotEmpty) {
+        debugPrint('QrPairingScreen: Reusing existing Keychain secret.');
+        _sessionHmacSecret = existing;
+        // Render the QR using the existing secret without writing a new one.
+        await _generateQR(forceNew: false);
+        return;
+      }
+    } catch (e) {
+      debugPrint('QrPairingScreen: Could not read Keychain during init: $e');
+    }
+    // No existing secret — generate a fresh one for first-time pairing.
+    await _generateQR(forceNew: true);
   }
 
   Future<void> _generateQR({bool forceNew = false}) async {
@@ -63,28 +97,39 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
       debugPrint('QrPairingScreen: Failed to read cert fingerprint: $e\n$st');
     }
 
-    // Only generate a new secret when forced (first load or "Generate New Code").
-    // Widget rebuilds reuse _sessionHmacSecret so the QR stays valid.
+    // Generate a new secret only when explicitly forced (user tapped
+    // "Generate New Code") OR when no in-memory secret exists yet.
     if (forceNew || _sessionHmacSecret == null) {
       _sessionHmacSecret = CryptoService.generateHmacSecret();
 
-      // Persist the secret — try Keychain first, fall back to SharedPreferences.
+      // Persist the new secret — Keychain only, no plaintext fallback.
       try {
-        const secureStorage = FlutterSecureStorage();
-        await secureStorage.write(key: 'hmacSecret', value: _sessionHmacSecret);
+        await _secureStorage.write(key: 'hmacSecret', value: _sessionHmacSecret);
+        debugPrint('Keychain write success');
       } catch (e) {
-        debugPrint('QrPairingScreen: Keychain failed ($e), saving to SharedPreferences');
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('hmacSecret', _sessionHmacSecret!);
+        debugPrint('QrPairingScreen: Keychain failed ($e)');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Security Error: Unable to access Keychain. Ensure macOS entitlements are configured.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() {
+            _generating = false;
+            _error = 'Security Error: Unable to access Keychain. Ensure macOS entitlements are configured.';
+          });
+        }
+        return; // Prevent QR generation if secret is not safely stored.
       }
+    }
 
-      // Provision the relay with the new secret.
-      if (mounted) {
-        try {
-          final ws = Provider.of<WebSocketService>(context, listen: false);
-          ws.connect('wss://127.0.0.1:$port', hmacSecret: _sessionHmacSecret, certFp: certFp);
-        } catch (_) {}
-      }
+    // Provision the relay with the current secret.
+    if (mounted) {
+      try {
+        final ws = Provider.of<WebSocketService>(context, listen: false);
+        ws.connect('wss://127.0.0.1:$port', hmacSecret: _sessionHmacSecret, certFp: certFp);
+      } catch (_) {}
     }
 
     // Build the QR JWT using the current session secret.
@@ -106,6 +151,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -236,11 +282,21 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
                           ),
                         ),
                       )
-                    else
+                    else if (_generating)
                       const SizedBox(
-                        width: 332,
-                        height: 332,
-                        child: Center(child: CircularProgressIndicator()),
+                        width: 288,
+                        height: 288,
+                        child: Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else
+                      SizedBox(
+                        width: 288,
+                        height: 288,
+                        child: Center(
+                          child: Icon(Icons.error_outline, color: colors.danger, size: 48),
+                        ),
                       ),
                   ],
                 ),

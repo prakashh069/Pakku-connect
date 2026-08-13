@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -114,6 +115,18 @@ class _RootRouterState extends State<RootRouter> {
           final wasPaired = prefs.getBool('paired') ?? false;
           if (wasPaired) {
             await prefs.setBool('paired', false);
+            try {
+              const secureStorage = FlutterSecureStorage();
+              await secureStorage.delete(key: 'hmacSecret');
+              await secureStorage.delete(key: 'ws_ip');
+              await secureStorage.delete(key: 'ws_port');
+              await secureStorage.delete(key: 'cert_fp');
+            } catch (_) {
+              await prefs.remove('hmacSecret');
+              await prefs.remove('ws_ip');
+              await prefs.remove('ws_port');
+              await prefs.remove('cert_fp');
+            }
             navigatorKey.currentState
                 ?.pushNamedAndRemoveUntil('/', (route) => false);
           }
@@ -144,11 +157,28 @@ class _RootRouterState extends State<RootRouter> {
 
       if (_isPaired) {
         try {
-          const secureStorage = FlutterSecureStorage();
+          const secureStorage = FlutterSecureStorage(
+            mOptions: MacOsOptions(
+              usesDataProtectionKeychain: !kDebugMode,
+            ),
+          );
           hmacSecret = await secureStorage.read(key: 'hmacSecret');
+          if (hmacSecret != null) {
+            debugPrint('Keychain read success');
+          }
+          
+          // Migration from insecure SharedPreferences
+          final insecureSecret = prefs.getString('hmacSecret');
+          if (insecureSecret != null) {
+            if (hmacSecret == null) {
+              await secureStorage.write(key: 'hmacSecret', value: insecureSecret);
+              hmacSecret = insecureSecret;
+              debugPrint('Main: Migrated hmacSecret from SharedPreferences to Keychain');
+            }
+            await prefs.remove('hmacSecret');
+          }
         } catch (e) {
-          debugPrint('Main: macOS Keychain unavailable, falling back to SharedPreferences: $e');
-          hmacSecret = prefs.getString('hmacSecret');
+          debugPrint('Main: Keychain failed: $e');
         }
         if (hmacSecret == null) {
           // Paired but no secret — force unpair so we don't loop forever.
@@ -220,7 +250,11 @@ class _RootRouterState extends State<RootRouter> {
         debugPrint('WebSocketService: Could not compute local certFp: $e');
       }
       
-      ws.connect('wss://127.0.0.1:$port', hmacSecret: hmacSecret, certFp: certFp);
+      if (hmacSecret != null && hmacSecret.isNotEmpty) {
+        ws.connect('wss://127.0.0.1:$port', hmacSecret: hmacSecret, certFp: certFp);
+      } else {
+        debugPrint('Main: Waiting for pairing before WebSocket connection.');
+      }
     } else {
       _isPaired = prefs.getBool('paired') ?? false;
       
@@ -229,9 +263,19 @@ class _RootRouterState extends State<RootRouter> {
         String? hmacSecret;
         try {
           hmacSecret = await secureStorage.read(key: 'hmacSecret');
+          
+          // Migration from insecure SharedPreferences
+          final insecureSecret = prefs.getString('hmacSecret');
+          if (insecureSecret != null) {
+            if (hmacSecret == null) {
+              await secureStorage.write(key: 'hmacSecret', value: insecureSecret);
+              hmacSecret = insecureSecret;
+              debugPrint('Main: Migrated hmacSecret to SecureStorage');
+            }
+            await prefs.remove('hmacSecret');
+          }
         } catch (e) {
-          debugPrint('Main: secure storage failed, falling back to SharedPreferences');
-          hmacSecret = prefs.getString('hmacSecret');
+          debugPrint('Main: secure storage failed: $e');
         }
         if (hmacSecret == null) {
           await prefs.setBool('paired', false);

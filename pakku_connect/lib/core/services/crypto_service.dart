@@ -44,7 +44,7 @@ class CryptoService {
       'device_id': deviceId,
       'device_name': deviceName,
       'platform': platform,
-      'nonce': _generateNonce(),
+      'jti': _generateNonce(),
     };
     if (wsIp != null) payload['ws_ip'] = wsIp;
     if (wsPort != null) payload['ws_port'] = wsPort;
@@ -107,7 +107,7 @@ class CryptoService {
       }
       
       // Verify presence of required custom claims
-      final requiredKeys = ['sub', 'iat', 'device_id', 'device_name', 'platform', 'nonce'];
+      final requiredKeys = ['sub', 'iat', 'device_id', 'device_name', 'platform', 'jti'];
       for (final key in requiredKeys) {
         if (!payload.containsKey(key)) {
           debugPrint('CryptoService: Missing required claim: $key');

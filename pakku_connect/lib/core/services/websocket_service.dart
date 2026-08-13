@@ -67,9 +67,20 @@ class WebSocketService implements PlatformTransport {
     if (certFp != null) {
       _certFp = certFp;
     }
+
+    // Guard: if there is still no valid secret after merging the argument,
+    // do NOT transition state or start the reconnect scheduler.
+    // Pairing has not completed — wait until QR flow provides the secret.
+    if (_hmacSecret == null || _hmacSecret!.isEmpty) {
+      debugPrint('WebSocketService: Waiting for pairing — no hmacSecret, skipping connect.');
+      return;
+    }
+
     _attempt = 0;
     _isIntentionalDisconnect = false;
     _paused = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     onDeviceStateChanged?.call(DeviceSessionState.connecting);
     _connectInternal();
   }
@@ -81,7 +92,12 @@ class WebSocketService implements PlatformTransport {
       debugPrint('WebSocketService: No hmacSecret — skipping connect.');
       return;
     }
+    
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _channel?.sink.close();
+    _channel = null;
+    _authenticated = false;
 
     try {
       final client = HttpClient();
@@ -112,11 +128,15 @@ class WebSocketService implements PlatformTransport {
       // If macOS, try to provision the relay with the HMAC secret
       if (Platform.isMacOS && _hmacSecret != null) {
         try {
-          final tokenPath = Directory.systemTemp.path + '/Connecto/pakku.token';
+          final tokenPath = (Platform.environment['TMPDIR'] ?? Directory.systemTemp.path) + '/Connecto/pakku.token';
           final tokenFile = File(tokenPath);
+          debugPrint('SET_SECRET block entered');
+          debugPrint('tokenPath=$tokenPath');
+          debugPrint('tokenExists=${tokenFile.existsSync()}');
           if (tokenFile.existsSync()) {
             final ipcToken = tokenFile.readAsStringSync();
-            debugPrint('WebSocketService: SEND set_secret');
+            debugPrint('ipcToken length=${ipcToken.length}');
+            debugPrint('Sending set_secret');
             currentChannel.sink.add(jsonEncode({
               'type': 'set_secret',
               'token': ipcToken,
@@ -124,7 +144,7 @@ class WebSocketService implements PlatformTransport {
             }));
           }
         } catch (e) {
-          debugPrint('WebSocketService: Failed to process \$tokenPath: \$e');
+          debugPrint('WebSocketService: Failed to process tokenPath: $e');
         }
       }
 
@@ -163,10 +183,16 @@ class WebSocketService implements PlatformTransport {
         },
         onDone: () {
           if (_channel != currentChannel) return;
-          debugPrint('WebSocketService: Connection closed');
+          debugPrint('WebSocketService: Connection closed, code: ${currentChannel.closeCode}, reason: ${currentChannel.closeReason}');
           _authenticated = false;
           onConnectionChange?.call(false);
-          _scheduleReconnect();
+          
+          if (currentChannel.closeCode == 1008 && currentChannel.closeReason == 'Secret rotated') {
+            debugPrint('WebSocketService: Secret rotated by host, unpairing.');
+            onUnpair?.call();
+          } else {
+            _scheduleReconnect();
+          }
         },
       );
       // Do NOT call onConnectionChange(true) here — wait for auth_ack
@@ -203,6 +229,9 @@ class WebSocketService implements PlatformTransport {
       final type = data['type'] as String?;
       if (type == 'auth_ack') {
         _authenticated = true;
+        _attempt = 0;
+        _reconnectTimer?.cancel();
+        _reconnectTimer = null;
         onConnectionChange?.call(true);
       } else if (type == 'hello') {
         onDeviceStateChanged?.call(DeviceSessionState.connected);
