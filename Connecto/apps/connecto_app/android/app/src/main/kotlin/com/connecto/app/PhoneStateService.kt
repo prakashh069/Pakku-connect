@@ -663,9 +663,9 @@ class PhoneStateService : Service() {
         }
         val now = System.currentTimeMillis() / 1000
         val payload = JSONObject().apply {
-            put("iss", "pakku_connect")
+            put("iss", "connecto")
             put("sub", "android_" + android.os.Build.MODEL)
-            put("aud", "pakku_connect_client")
+            put("aud", "connecto_client")
             put("iat", now)
             put("nbf", now)
             put("exp", now + 300)
