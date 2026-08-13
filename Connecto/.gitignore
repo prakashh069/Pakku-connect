@@ -1,0 +1,14 @@
+# Connecto-level secret protection
+# Defence-in-depth: these rules mirror the repo root .gitignore.
+# Even if root rules are modified, sensitive material inside any
+# Connecto/ subdirectory remains protected.
+
+# Environment secrets
+.env
+
+# TLS / certificate private key material
+certs/*.key
+certs/*.p12
+certs/*.pem
+certs/*.crt
+certs/*.der
