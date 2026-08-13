@@ -83,14 +83,13 @@ class MainActivity : FlutterActivity() {
                         val ip = call.argument<String>("ip")
                         val port = call.argument<Int>("port") ?: 8080
                         val certFp = call.argument<String>("certFp")
-                        // Security: hmacSecret is NOT written to SharedPreferences.
-                        // It is stored exclusively via FlutterSecureStorage (Dart side)
-                        // to prevent plaintext exposure through ADB backup or other apps.
+                        val hmacSecret = call.argument<String>("hmacSecret")
                         getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
                             .edit()
                             .putString("ws_ip", ip)
                             .putInt("ws_port", port)
                             .putString("cert_fp", certFp)
+                            .putString("hmac_secret", hmacSecret)
                             .apply()
                         result.success(true)
                     }

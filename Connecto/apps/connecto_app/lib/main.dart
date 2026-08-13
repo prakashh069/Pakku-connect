@@ -17,6 +17,7 @@ import 'features/contacts/screens/contacts_tab.dart';
 import 'features/contacts/services/favorites_service.dart';
 import 'features/clipboard/services/clipboard_sync_manager.dart';
 import 'features/clipboard/services/clipboard_share_coordinator.dart';
+import 'features/relay/services/relay_manager.dart';
 import 'core/services/window_visibility_service.dart';
 import 'core/services/platform_transport.dart';
 import 'core/services/crypto_service.dart';
@@ -41,6 +42,23 @@ class ConnectoApp extends StatelessWidget {
             _wsService = WebSocketService();
             return _wsService!;
           },
+        ),
+        Provider<RelayManager>(
+          lazy: false,
+          create: (_) {
+            final rm = RelayManager();
+            if (Platform.isMacOS && rm.isDartMode) {
+              rm.start(
+                port: 8080,
+                certPath: 'certs/device.crt',
+                keyPath: 'certs/device.key',
+              ).catchError((e) {
+                debugPrint('Failed to start Dart Relay: \$e');
+              });
+            }
+            return rm;
+          },
+          dispose: (_, rm) => rm.stop(),
         ),
         Provider(
           create: (_) => WindowVisibilityService()..init(),
@@ -251,6 +269,9 @@ class _RootRouterState extends State<RootRouter> {
       }
       
       if (hmacSecret != null && hmacSecret.isNotEmpty) {
+        if (mounted) {
+          context.read<RelayManager>().setSecret(hmacSecret);
+        }
         ws.connect('wss://127.0.0.1:$port', hmacSecret: hmacSecret, certFp: certFp);
       } else {
         debugPrint('Main: Waiting for pairing before WebSocket connection.');

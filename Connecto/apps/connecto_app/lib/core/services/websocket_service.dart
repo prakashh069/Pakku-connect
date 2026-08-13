@@ -127,24 +127,27 @@ class WebSocketService implements PlatformTransport {
       
       // If macOS, try to provision the relay with the HMAC secret
       if (Platform.isMacOS && _hmacSecret != null) {
-        try {
-          final tokenPath = (Platform.environment['TMPDIR'] ?? Directory.systemTemp.path) + '/Connecto/pakku.token';
-          final tokenFile = File(tokenPath);
-          debugPrint('SET_SECRET block entered');
-          debugPrint('tokenPath=$tokenPath');
-          debugPrint('tokenExists=${tokenFile.existsSync()}');
-          if (tokenFile.existsSync()) {
-            final ipcToken = tokenFile.readAsStringSync();
-            debugPrint('ipcToken length=${ipcToken.length}');
-            debugPrint('Sending set_secret');
-            currentChannel.sink.add(jsonEncode({
-              'type': 'set_secret',
-              'token': ipcToken,
-              'secret': _hmacSecret,
-            }));
+        final relayMode = const String.fromEnvironment('CONNECTO_RELAY_MODE', defaultValue: 'node');
+        if (relayMode == 'node') {
+          try {
+            final tokenPath = (Platform.environment['TMPDIR'] ?? Directory.systemTemp.path) + '/Connecto/pakku.token';
+            final tokenFile = File(tokenPath);
+            debugPrint('SET_SECRET block entered');
+            debugPrint('tokenPath=$tokenPath');
+            debugPrint('tokenExists=${tokenFile.existsSync()}');
+            if (tokenFile.existsSync()) {
+              final ipcToken = tokenFile.readAsStringSync();
+              debugPrint('ipcToken length=${ipcToken.length}');
+              debugPrint('Sending set_secret');
+              currentChannel.sink.add(jsonEncode({
+                'type': 'set_secret',
+                'token': ipcToken,
+                'secret': _hmacSecret,
+              }));
+            }
+          } catch (e) {
+            debugPrint('WebSocketService: Failed to process tokenPath: $e');
           }
-        } catch (e) {
-          debugPrint('WebSocketService: Failed to process tokenPath: $e');
         }
       }
 

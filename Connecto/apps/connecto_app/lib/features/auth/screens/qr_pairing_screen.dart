@@ -8,6 +8,7 @@ import '../../../core/services/crypto_service.dart';
 import '../../../core/constants/app_theme.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/websocket_service.dart';
+import '../../relay/services/relay_manager.dart';
 
 class QrPairingScreen extends StatefulWidget {
   const QrPairingScreen({super.key});
@@ -127,6 +128,9 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     if (mounted) {
       try {
         final ws = Provider.of<WebSocketService>(context, listen: false);
+        if (mounted) {
+          context.read<RelayManager>().setSecret(_sessionHmacSecret!);
+        }
         ws.connect('wss://127.0.0.1:$port', hmacSecret: _sessionHmacSecret, certFp: certFp);
       } catch (_) {}
     }
