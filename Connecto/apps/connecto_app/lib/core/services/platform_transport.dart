@@ -9,7 +9,7 @@ abstract class PlatformTransport {
 }
 
 class MethodChannelTransport implements PlatformTransport {
-  static const MethodChannel _channel = MethodChannel('com.pakku.connect/platform');
+  static const MethodChannel _channel = MethodChannel('com.connecto.app/platform');
   
   final StreamController<Map<String, dynamic>> _messageController = StreamController.broadcast();
 

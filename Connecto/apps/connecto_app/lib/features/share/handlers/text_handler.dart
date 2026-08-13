@@ -10,7 +10,7 @@ import 'share_handler.dart';
 /// All work runs on the main isolate — no heavy processing involved.
 class TextHandler implements ShareHandler {
   static const MethodChannel _channel =
-      MethodChannel('com.pakku.connect/clipboardShare');
+      MethodChannel('com.connecto.app/clipboardShare');
 
   @override
   bool supports(String mime) =>

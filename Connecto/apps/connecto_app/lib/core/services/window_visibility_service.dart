@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 class WindowVisibilityService {
   bool _isVisible = true;
-  final MethodChannel _channel = const MethodChannel('com.pakku.connect/menuBar');
+  final MethodChannel _channel = const MethodChannel('com.connecto.app/menuBar');
   final List<void Function()> _listeners = [];
 
   bool get isVisible => _isVisible;

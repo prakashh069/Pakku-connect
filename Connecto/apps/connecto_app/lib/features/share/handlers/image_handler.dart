@@ -11,7 +11,7 @@ import 'share_handler.dart';
 /// and lazy NSImage creation.
 class ImageHandler implements ShareHandler {
   static const MethodChannel _channel =
-      MethodChannel('com.pakku.connect/clipboardShare');
+      MethodChannel('com.connecto.app/clipboardShare');
 
   static const _supportedMimes = {
     ShareMime.png,

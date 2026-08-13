@@ -15,7 +15,7 @@ class ScanScreen extends StatefulWidget {
 
 class _ScanScreenState extends State<ScanScreen> {
   final controller = MobileScannerController();
-  final _platform = const MethodChannel('com.pakku.connect/platform');
+  final _platform = const MethodChannel('com.connecto.app/platform');
   bool _verifying = false;
   String? _error;
 

@@ -3,7 +3,7 @@ import 'package:connecto/core/models/call.dart';
 import 'call_presenter.dart';
 
 class MacCallPresenter implements CallPresenter {
-  final MethodChannel _channel = const MethodChannel('com.pakku.connect/callPanel');
+  final MethodChannel _channel = const MethodChannel('com.connecto.app/callPanel');
 
   @override
   void showCall(Call call) {

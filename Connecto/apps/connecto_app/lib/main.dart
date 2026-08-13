@@ -232,7 +232,7 @@ class _RootRouterState extends State<RootRouter> {
             ?.pushNamedAndRemoveUntil('/', (route) => false);
       };
 
-      const menuBarChannel = MethodChannel('com.pakku.connect/menuBar');
+      const menuBarChannel = MethodChannel('com.connecto.app/menuBar');
       menuBarChannel.setMethodCallHandler((call) async {
         if (call.method == 'pause') {
           ws.pause();
@@ -285,7 +285,7 @@ class _RootRouterState extends State<RootRouter> {
 
       if (_isPaired) {
         try {
-          const platform = MethodChannel('com.pakku.connect/platform');
+          const platform = MethodChannel('com.connecto.app/platform');
           await platform.invokeMethod('startPhoneStateService');
           // Request call screening role for caller ID on Samsung Android 16+
           try {
@@ -317,7 +317,7 @@ class _RootRouterState extends State<RootRouter> {
 
   void _handleSessionUpdate(DeviceSessionState newState) {
     if (Platform.isMacOS) {
-      const menuBarChannel = MethodChannel('com.pakku.connect/menuBar');
+      const menuBarChannel = MethodChannel('com.connecto.app/menuBar');
       menuBarChannel.invokeMethod('updateStatus', {'state': newState.name});
     }
     if (mounted) {
@@ -967,7 +967,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   label: const Text('Enable Auto-Paste'),
                                   onPressed: () {
                                     const platform = MethodChannel(
-                                        'com.pakku.connect/platform');
+                                        'com.connecto.app/platform');
                                     platform.invokeMethod(
                                         'requestOverlayPermission');
                                   },
@@ -1022,7 +1022,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 try { ws.send({'type': 'unpair'}); } catch (_) {}
               } else {
                 try {
-                  const platform = MethodChannel('com.pakku.connect/platform');
+                  const platform = MethodChannel('com.connecto.app/platform');
                   platform.invokeMethod('unpair');
                 } catch (_) {}
               }

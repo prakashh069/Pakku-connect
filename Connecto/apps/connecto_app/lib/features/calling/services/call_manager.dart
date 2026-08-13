@@ -15,9 +15,9 @@ class CallManager extends ChangeNotifier {
   final WindowVisibilityService windowVisibilityService;
   CallPresenter? callPresenter;
   final MethodChannel _platform =
-      const MethodChannel('com.pakku.connect/platform');
+      const MethodChannel('com.connecto.app/platform');
   final MethodChannel _callPanelChannel =
-      const MethodChannel('com.pakku.connect/callPanel');
+      const MethodChannel('com.connecto.app/callPanel');
 
   String? lastNativeError;
 

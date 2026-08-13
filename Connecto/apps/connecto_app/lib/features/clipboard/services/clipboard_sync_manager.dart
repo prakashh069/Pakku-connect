@@ -85,7 +85,7 @@ class ClipboardSyncManager extends ChangeNotifier {
 
   Future<String> _fetchDeviceName() async {
     try {
-      const ch = MethodChannel('com.pakku.connect/platform');
+      const ch = MethodChannel('com.connecto.app/platform');
       final name = await ch.invokeMethod<String>('getDeviceName');
       return name ?? 'Android';
     } catch (_) {

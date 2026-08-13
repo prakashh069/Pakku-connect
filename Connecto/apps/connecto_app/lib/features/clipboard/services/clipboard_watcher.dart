@@ -25,7 +25,7 @@ class ClipboardWatcher with WidgetsBindingObserver {
     _isRunning = true;
     
     if (Platform.isMacOS) {
-      const channel = MethodChannel('com.pakku.connect/macClipboard');
+      const channel = MethodChannel('com.connecto.app/macClipboard');
       channel.setMethodCallHandler((call) async {
         if (call.method == 'clipboardTextChanged') {
           final text = call.arguments as String?;
@@ -52,7 +52,7 @@ class ClipboardWatcher with WidgetsBindingObserver {
     _isRunning = false;
     
     if (Platform.isMacOS) {
-      const channel = MethodChannel('com.pakku.connect/macClipboard');
+      const channel = MethodChannel('com.connecto.app/macClipboard');
       channel.invokeMethod('stopWatching');
       channel.setMethodCallHandler(null);
     } else {
