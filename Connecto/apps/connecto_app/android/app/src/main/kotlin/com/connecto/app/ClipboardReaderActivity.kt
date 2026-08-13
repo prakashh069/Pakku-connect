@@ -1,4 +1,4 @@
-package com.pakku.pakku_connect
+package com.connecto.app
 
 import android.app.Activity
 import android.content.ClipboardManager
@@ -15,8 +15,8 @@ import java.io.InputStream
 
 class ClipboardReaderActivity : Activity() {
     companion object {
-        const val ACTION_READ_CLIPBOARD = "com.pakku.pakku_connect.ACTION_READ_CLIPBOARD"
-        const val ACTION_SEND_TO_MAC = "com.pakku.pakku_connect.ACTION_SEND_TO_MAC"
+        const val ACTION_READ_CLIPBOARD = "com.connecto.app.ACTION_READ_CLIPBOARD"
+        const val ACTION_SEND_TO_MAC = "com.connecto.app.ACTION_SEND_TO_MAC"
     }
 
     private var hasProcessed = false

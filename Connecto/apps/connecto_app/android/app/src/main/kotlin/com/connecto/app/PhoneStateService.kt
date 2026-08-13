@@ -1,4 +1,4 @@
-package com.pakku.pakku_connect
+package com.connecto.app
 
 import android.app.*
 import android.content.Context
@@ -138,10 +138,10 @@ class PhoneStateService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "com.pakku.pakku_connect.ACTION_STOP_RINGING") {
+        if (intent?.action == "com.connecto.app.ACTION_STOP_RINGING") {
             stopRinging()
             return START_STICKY
-        } else if (intent?.action == "com.pakku.pakku_connect.UNPAIR") {
+        } else if (intent?.action == "com.connecto.app.UNPAIR") {
             try {
                 val json = JSONObject().apply { put("type", "unpair") }
                 sendAuthenticated(json.toString())
@@ -151,7 +151,7 @@ class PhoneStateService : Service() {
             val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
             prefs.edit().putBoolean("paired", false).apply()
             
-            val broadcastIntent = Intent("com.pakku.pakku_connect.UNPAIRED")
+            val broadcastIntent = Intent("com.connecto.app.UNPAIRED")
             broadcastIntent.setPackage(packageName)
             sendBroadcast(broadcastIntent)
             
@@ -159,7 +159,7 @@ class PhoneStateService : Service() {
                 stopSelf()
             }, 500)
             return START_NOT_STICKY
-        } else if (intent?.action == "com.pakku.pakku_connect.SEND_MESSAGE") {
+        } else if (intent?.action == "com.connecto.app.SEND_MESSAGE") {
             val payload = intent.getStringExtra("payload")
             if (payload != null) {
                 try {
@@ -446,7 +446,7 @@ class PhoneStateService : Service() {
                             Log.i(TAG, "Received unpair command")
                             val prefs = getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
                             prefs.edit().putBoolean("paired", false).apply()
-                            val broadcastIntent = Intent("com.pakku.pakku_connect.UNPAIRED")
+                            val broadcastIntent = Intent("com.connecto.app.UNPAIRED")
                             broadcastIntent.setPackage(packageName)
                             sendBroadcast(broadcastIntent)
                             stopSelf()
@@ -630,7 +630,7 @@ class PhoneStateService : Service() {
                                 } catch (e: Exception) {}
                             }
 
-                            val broadcastIntent = Intent("com.pakku.pakku_connect.WS_MESSAGE")
+                            val broadcastIntent = Intent("com.connecto.app.WS_MESSAGE")
                             broadcastIntent.setPackage(packageName)
                             broadcastIntent.putExtra("payload", payloadToBroadcast)
                             sendBroadcast(broadcastIntent)
@@ -642,7 +642,7 @@ class PhoneStateService : Service() {
                             }
                         }
                         else -> {
-                            val broadcastIntent = Intent("com.pakku.pakku_connect.WS_MESSAGE")
+                            val broadcastIntent = Intent("com.connecto.app.WS_MESSAGE")
                             broadcastIntent.setPackage(packageName)
                             broadcastIntent.putExtra("payload", text)
                             sendBroadcast(broadcastIntent)
@@ -976,7 +976,7 @@ class PhoneStateService : Service() {
 
             val clipReceiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: Context?, intent: Intent?) {
-                    if (intent?.action != "com.pakku.pakku_connect.ACTION_SEND_TO_MAC") return
+                    if (intent?.action != "com.connecto.app.ACTION_SEND_TO_MAC") return
                     val text      = intent.getStringExtra("text")
                     val imagePath = intent.getStringExtra("imagePath")
                     if (text.isNullOrEmpty() && imagePath.isNullOrEmpty()) return
@@ -1091,7 +1091,7 @@ class PhoneStateService : Service() {
                 }
             }
             clipboardReceiver = clipReceiver
-            val clipFilter = android.content.IntentFilter("com.pakku.pakku_connect.ACTION_SEND_TO_MAC")
+            val clipFilter = android.content.IntentFilter("com.connecto.app.ACTION_SEND_TO_MAC")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(clipReceiver, clipFilter, Context.RECEIVER_NOT_EXPORTED)
             } else {
@@ -1212,7 +1212,7 @@ class PhoneStateService : Service() {
 
     private fun showRingingNotification() {
         val stopIntent = Intent(this, PhoneStateService::class.java).apply {
-            action = "com.pakku.pakku_connect.ACTION_STOP_RINGING"
+            action = "com.connecto.app.ACTION_STOP_RINGING"
         }
         val pendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         

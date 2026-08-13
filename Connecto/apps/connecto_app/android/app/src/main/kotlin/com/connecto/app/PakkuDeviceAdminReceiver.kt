@@ -1,4 +1,4 @@
-package com.pakku.pakku_connect
+package com.connecto.app
 
 import android.app.admin.DeviceAdminReceiver
 import android.content.Context

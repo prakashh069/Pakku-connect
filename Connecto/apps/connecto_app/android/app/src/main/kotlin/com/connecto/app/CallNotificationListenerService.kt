@@ -1,4 +1,4 @@
-package com.pakku.pakku_connect
+package com.connecto.app
 
 import android.app.Notification
 import android.content.Intent
@@ -13,7 +13,7 @@ class CallNotificationListenerService : NotificationListenerService() {
 
     companion object {
         const val TAG = "CallNotifListener"
-        const val ACTION_CALL_ANSWERED = "com.pakku.pakku_connect.CALL_ANSWERED"
+        const val ACTION_CALL_ANSWERED = "com.connecto.app.CALL_ANSWERED"
     }
 
     override fun onListenerConnected() {

@@ -1,4 +1,4 @@
-package com.pakku.pakku_connect.benchmark
+package com.connecto.app.benchmark
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

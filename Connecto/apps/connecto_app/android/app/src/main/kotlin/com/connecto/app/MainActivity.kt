@@ -1,4 +1,4 @@
-package com.pakku.pakku_connect
+package com.connecto.app
 
 import android.Manifest
 import android.content.Context
@@ -13,7 +13,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.pakku.connect/platform"
+    private val CHANNEL = "com.connecto.app/platform"
     private var pendingPermissionResult: MethodChannel.Result? = null
 
     private val unpairedReceiver = object : android.content.BroadcastReceiver() {
@@ -37,11 +37,11 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(unpairedReceiver, android.content.IntentFilter("com.pakku.pakku_connect.UNPAIRED"), Context.RECEIVER_NOT_EXPORTED)
-            registerReceiver(wsMessageReceiver, android.content.IntentFilter("com.pakku.pakku_connect.WS_MESSAGE"), Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(unpairedReceiver, android.content.IntentFilter("com.connecto.app.UNPAIRED"), Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(wsMessageReceiver, android.content.IntentFilter("com.connecto.app.WS_MESSAGE"), Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(unpairedReceiver, android.content.IntentFilter("com.pakku.pakku_connect.UNPAIRED"))
-            registerReceiver(wsMessageReceiver, android.content.IntentFilter("com.pakku.pakku_connect.WS_MESSAGE"))
+            registerReceiver(unpairedReceiver, android.content.IntentFilter("com.connecto.app.UNPAIRED"))
+            registerReceiver(wsMessageReceiver, android.content.IntentFilter("com.connecto.app.WS_MESSAGE"))
         }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -170,7 +170,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "unpair" -> {
                         val intent = Intent(this, PhoneStateService::class.java).apply {
-                            action = "com.pakku.pakku_connect.UNPAIR"
+                            action = "com.connecto.app.UNPAIR"
                         }
                         startService(intent)
                         result.success(true)
@@ -179,7 +179,7 @@ class MainActivity : FlutterActivity() {
                         val payload = call.arguments<String>()
                         if (payload != null) {
                             val intent = Intent(this, PhoneStateService::class.java).apply {
-                                action = "com.pakku.pakku_connect.SEND_MESSAGE"
+                                action = "com.connecto.app.SEND_MESSAGE"
                                 putExtra("payload", payload)
                             }
                             startService(intent)

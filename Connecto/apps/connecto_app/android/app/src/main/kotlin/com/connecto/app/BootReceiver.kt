@@ -1,4 +1,4 @@
-package com.pakku.pakku_connect
+package com.connecto.app
 
 import android.content.BroadcastReceiver
 import android.content.Context
