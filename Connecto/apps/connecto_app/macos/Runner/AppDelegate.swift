@@ -53,6 +53,7 @@ class AppDelegate: FlutterAppDelegate {
       CallPanelController.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
       ClipboardPanelController.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
       MacClipboardSync.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
+      NotificationPanelController.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
       
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didBecomeKeyNotification, object: mainFlutterWindow)
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didResignKeyNotification, object: mainFlutterWindow)
@@ -239,5 +240,83 @@ class MacClipboardSync {
             // It's text
             methodChannel?.invokeMethod("clipboardTextChanged", arguments: text)
         }
+    }
+}
+
+import UserNotifications
+
+class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationPanelController()
+    private var methodChannel: FlutterMethodChannel?
+
+    private override init() {
+        super.init()
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    func setup(binaryMessenger: FlutterBinaryMessenger) {
+        methodChannel = FlutterMethodChannel(
+            name: "com.connecto.app/notifications",
+            binaryMessenger: binaryMessenger
+        )
+        
+        methodChannel?.setMethodCallHandler { [weak self] (call, result) in
+            if call.method == "showNotification" {
+                if let args = call.arguments as? [String: Any],
+                   let app = args["app"] as? String,
+                   let title = args["title"] as? String,
+                   let body = args["body"] as? String {
+                    self?.showNotification(app: app, title: title, body: body, result: result)
+                } else {
+                    result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+                }
+            } else {
+                result(FlutterMethodNotImplemented)
+            }
+        }
+    }
+
+    private func showNotification(app: String, title: String, body: String, result: @escaping FlutterResult) {
+        let center = UNUserNotificationCenter.current()
+        
+        // Request permissions if not already granted.
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if let error = error {
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "PERMISSION_ERROR", message: error.localizedDescription, details: nil))
+                }
+                return
+            }
+            
+            if !granted {
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "PERMISSION_DENIED", message: "User denied notification permission", details: nil))
+                }
+                return
+            }
+            
+            let content = UNMutableNotificationContent()
+            content.title = app
+            content.subtitle = title
+            content.body = body
+            content.sound = UNNotificationSound.default
+            
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            
+            center.add(request) { error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        result(FlutterError(code: "DELIVERY_ERROR", message: error.localizedDescription, details: nil))
+                    } else {
+                        result(nil) // Success
+                    }
+                }
+            }
+        }
+    }
+    
+    // Allow notifications to be shown even if the macOS app is currently in the foreground.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }

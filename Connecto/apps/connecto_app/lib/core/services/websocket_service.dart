@@ -124,33 +124,6 @@ class WebSocketService implements PlatformTransport {
       _channel = currentChannel;
 
       debugPrint('WebSocketService: WebSocket OPEN');
-      
-      // If macOS, try to provision the relay with the HMAC secret
-      if (Platform.isMacOS && _hmacSecret != null) {
-        final relayMode = const String.fromEnvironment('CONNECTO_RELAY_MODE', defaultValue: 'node');
-        if (relayMode == 'node') {
-          try {
-            final tokenPath = (Platform.environment['TMPDIR'] ?? Directory.systemTemp.path) + '/Connecto/pakku.token';
-            final tokenFile = File(tokenPath);
-            debugPrint('SET_SECRET block entered');
-            debugPrint('tokenPath=$tokenPath');
-            debugPrint('tokenExists=${tokenFile.existsSync()}');
-            if (tokenFile.existsSync()) {
-              final ipcToken = tokenFile.readAsStringSync();
-              debugPrint('ipcToken length=${ipcToken.length}');
-              debugPrint('Sending set_secret');
-              currentChannel.sink.add(jsonEncode({
-                'type': 'set_secret',
-                'token': ipcToken,
-                'secret': _hmacSecret,
-              }));
-            }
-          } catch (e) {
-            debugPrint('WebSocketService: Failed to process tokenPath: $e');
-          }
-        }
-      }
-
       debugPrint('WebSocketService: SEND hello');
       
       final jwt = _hmacSecret != null 

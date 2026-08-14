@@ -18,7 +18,7 @@ void main() {
       
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-        const MethodChannel('com.pakku.connect/clipboardShare'),
+        const MethodChannel('com.connecto.app/clipboardShare'),
         (MethodCall methodCall) async {
           methodCalls.add(methodCall);
           return null;
@@ -29,7 +29,7 @@ void main() {
     tearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-        const MethodChannel('com.pakku.connect/clipboardShare'),
+        const MethodChannel('com.connecto.app/clipboardShare'),
         null,
       );
     });

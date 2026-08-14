@@ -53,7 +53,7 @@ void main() {
 
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
-        const MethodChannel('com.pakku.connect/macClipboard'),
+        const MethodChannel('com.connecto.app/macClipboard'),
         (MethodCall methodCall) async {
           return null;
         },
@@ -79,7 +79,7 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(const MethodChannel('com.pakku.connect/platform'), null);
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(const MethodChannel('com.pakku.connect/macClipboard'), null);
+          .setMockMethodCallHandler(const MethodChannel('com.connecto.app/macClipboard'), null);
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(const MethodChannel('flutter/platform'), null);
     });

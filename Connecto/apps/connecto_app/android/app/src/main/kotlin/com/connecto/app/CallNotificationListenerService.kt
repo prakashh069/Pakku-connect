@@ -76,6 +76,80 @@ class CallNotificationListenerService : NotificationListenerService() {
                 hasSentAnswered = true
                 wasDialing = false
             }
+        } else if (!isCall) {
+            // Phase 5.3.1 - Notification Mirroring Pipeline
+            
+            // 1 & 2. Verify Notification Listener Access & notification_sync_enabled
+            val prefs = getSharedPreferences("FlutterSharedPreferences", android.content.Context.MODE_PRIVATE)
+            val syncEnabled = prefs.getBoolean("flutter_notification_sync_enabled", false)
+            if (!syncEnabled) return
+
+            // 3. Read packageName only
+            // packageName is already read at the top of the method (val packageName = sbn.packageName)
+
+            // 4. Run blocked package filtering
+            val blockedPackages = setOf(
+                "com.connecto.app", // Connecto itself
+                "com.android.systemui", // System UI
+                "android", // Android system
+                "com.google.android.googlequicksearchbox"
+            )
+
+            // 5. Run sensitive package filtering
+            val isSensitive = packageName.contains("authenticator", ignoreCase = true) ||
+                              packageName.contains("bank", ignoreCase = true) ||
+                              packageName.contains("pay", ignoreCase = true) ||
+                              packageName.contains("wallet", ignoreCase = true)
+
+            if (blockedPackages.contains(packageName) || isSensitive) {
+                return
+            }
+
+            // 6. Only after passing all filters: read notification title and body
+            val extras = notification.extras
+            val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+            val rawBody = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+
+            // 7. Validate notification (non-empty, not ongoing)
+            if (rawTitle.isBlank() && rawBody.isBlank()) return
+            if (sbn.isOngoing) return // ignore ongoing non-call notifications
+
+            // Field truncation (Title: 256, Body: 512)
+            val title = if (rawTitle.length > 256) rawTitle.substring(0, 256) else rawTitle
+            val body = if (rawBody.length > 512) rawBody.substring(0, 512) else rawBody
+
+            // Get app name (fallback to package name)
+            val pm = applicationContext.packageManager
+            val appName = try {
+                val ai = pm.getApplicationInfo(packageName, 0)
+                pm.getApplicationLabel(ai).toString()
+            } catch (e: Exception) {
+                packageName
+            }
+
+            // 8. Create JSON payload
+            try {
+                val payloadObj = org.json.JSONObject().apply {
+                    put("type", "notification")
+                    put("id", "$packageName:${sbn.id}")
+                    put("package", packageName)
+                    put("app", appName)
+                    put("title", title)
+                    put("body", body)
+                    put("time", sbn.postTime)
+                    put("ongoing", sbn.isOngoing)
+                }
+
+                // 9. Transmit via existing SEND_MESSAGE Intent flow
+                val intent = Intent("com.connecto.app.SEND_MESSAGE").apply {
+                    setPackage(this@CallNotificationListenerService.packageName)
+                    putExtra("payload", payloadObj.toString())
+                }
+                sendBroadcast(intent)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing notification payload", e)
+            }
         }
     }
 

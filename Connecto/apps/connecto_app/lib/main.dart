@@ -21,9 +21,29 @@ import 'features/relay/services/relay_manager.dart';
 import 'core/services/window_visibility_service.dart';
 import 'core/services/platform_transport.dart';
 import 'core/services/crypto_service.dart';
+import 'features/notifications/services/notification_manager.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 WebSocketService? _wsService;
+
+Future<void> clearAllPairedState(SharedPreferences prefs) async {
+  await prefs.setBool('paired', false);
+  try {
+    const secureStorage = FlutterSecureStorage(
+      mOptions: MacOsOptions(
+        usesDataProtectionKeychain: !kDebugMode,
+      ),
+    );
+    await secureStorage.delete(key: 'hmacSecret');
+    await secureStorage.delete(key: 'ws_ip');
+    await secureStorage.delete(key: 'ws_port');
+    await secureStorage.delete(key: 'cert_fp');
+  } catch (_) {}
+  await prefs.remove('hmacSecret');
+  await prefs.remove('ws_ip');
+  await prefs.remove('ws_port');
+  await prefs.remove('cert_fp');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,13 +67,13 @@ class ConnectoApp extends StatelessWidget {
           lazy: false,
           create: (_) {
             final rm = RelayManager();
-            if (Platform.isMacOS && rm.isDartMode) {
+            if (Platform.isMacOS) {
               rm.start(
                 port: 8080,
                 certPath: 'certs/device.crt',
                 keyPath: 'certs/device.key',
               ).catchError((e) {
-                debugPrint('Failed to start Dart Relay: \$e');
+                debugPrint('Failed to start Dart Relay: $e');
               });
             }
             return rm;
@@ -86,6 +106,12 @@ class ConnectoApp extends StatelessWidget {
           lazy: false,
           create: (ctx) => ClipboardSyncManager(ctx.read<PlatformTransport>()),
           update: (_, pt, previous) => previous ?? ClipboardSyncManager(pt),
+        ),
+        ChangeNotifierProxyProvider<PlatformTransport, NotificationManager>(
+          lazy: false,
+          create: (ctx) =>
+              NotificationManager(ctx.read<PlatformTransport>()),
+          update: (_, pt, previous) => previous ?? NotificationManager(pt),
         ),
       ],
       child: MaterialApp(
@@ -132,19 +158,7 @@ class _RootRouterState extends State<RootRouter> {
           final prefs = await SharedPreferences.getInstance();
           final wasPaired = prefs.getBool('paired') ?? false;
           if (wasPaired) {
-            await prefs.setBool('paired', false);
-            try {
-              const secureStorage = FlutterSecureStorage();
-              await secureStorage.delete(key: 'hmacSecret');
-              await secureStorage.delete(key: 'ws_ip');
-              await secureStorage.delete(key: 'ws_port');
-              await secureStorage.delete(key: 'cert_fp');
-            } catch (_) {
-              await prefs.remove('hmacSecret');
-              await prefs.remove('ws_ip');
-              await prefs.remove('ws_port');
-              await prefs.remove('cert_fp');
-            }
+            await clearAllPairedState(prefs);
             navigatorKey.currentState
                 ?.pushNamedAndRemoveUntil('/', (route) => false);
           }
@@ -244,7 +258,7 @@ class _RootRouterState extends State<RootRouter> {
       };
 
       ws.onUnpair = () async {
-        await prefs.setBool('paired', false);
+        await clearAllPairedState(prefs);
         ws.reset(); // Clears credentials so we don't reconnect with stale secret
         navigatorKey.currentState
             ?.pushNamedAndRemoveUntil('/', (route) => false);
@@ -1022,31 +1036,22 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.logout),
             tooltip: 'Disconnect',
             onPressed: () async {
-              // Step 1: Clear all local paired state immediately (no network needed)
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('paired', false);
-              try {
-                const secureStorage = FlutterSecureStorage();
-                await secureStorage.delete(key: 'hmacSecret');
-                await secureStorage.delete(key: 'ws_ip');
-                await secureStorage.delete(key: 'ws_port');
-                await secureStorage.delete(key: 'cert_fp');
-              } catch (_) {
-                await prefs.remove('hmacSecret');
-                await prefs.remove('ws_ip');
-                await prefs.remove('ws_port');
-                await prefs.remove('cert_fp');
-              }
-
-              // Step 2: Try to notify other device (best-effort, non-blocking)
+              // Step 1: Try to notify other device (best-effort, non-blocking) before closing socket
               if (Platform.isMacOS) {
-                try { ws.send({'type': 'unpair'}); } catch (_) {}
+                try {
+                  await ws.send({'type': 'unpair'});
+                  await Future.delayed(const Duration(milliseconds: 100)); // allow flush
+                } catch (_) {}
               } else {
                 try {
                   const platform = MethodChannel('com.connecto.app/platform');
                   platform.invokeMethod('unpair');
                 } catch (_) {}
               }
+
+              // Step 2: Clear all local paired state immediately (no network needed)
+              final prefs = await SharedPreferences.getInstance();
+              await clearAllPairedState(prefs);
               ws.reset(); // Clears credentials so we can't reconnect with stale secret
 
               // Step 3: Always navigate away regardless of network state
