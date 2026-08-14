@@ -28,7 +28,6 @@ class RelayConfig {
     'battery_status',
     'device_state',
     'action_result',
-    'notification',
     'sync.notification',
     'device.telemetry',
   };

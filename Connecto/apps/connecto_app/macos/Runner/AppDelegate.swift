@@ -252,6 +252,21 @@ class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
     private override init() {
         super.init()
         UNUserNotificationCenter.current().delegate = self
+        
+        let replyAction = UNTextInputNotificationAction(
+            identifier: "REPLY_ACTION",
+            title: "Reply",
+            options: [],
+            textInputButtonTitle: "Send",
+            textInputPlaceholder: "Type a message..."
+        )
+        let category = UNNotificationCategory(
+            identifier: "REPLY_CATEGORY",
+            actions: [replyAction],
+            intentIdentifiers: [],
+            options: .customDismissAction
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([category])
     }
 
     func setup(binaryMessenger: FlutterBinaryMessenger) {
@@ -263,12 +278,23 @@ class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
         methodChannel?.setMethodCallHandler { [weak self] (call, result) in
             if call.method == "showNotification" {
                 if let args = call.arguments as? [String: Any],
+                   let id = args["id"] as? String,
                    let app = args["app"] as? String,
                    let title = args["title"] as? String,
-                   let body = args["body"] as? String {
-                    self?.showNotification(app: app, title: title, body: body, result: result)
+                   let body = args["body"] as? String,
+                   let canReply = args["canReply"] as? Bool {
+                    let replyHandle = args["replyHandle"] as? String
+                    self?.showNotification(id: id, app: app, title: title, body: body, canReply: canReply, replyHandle: replyHandle, result: result)
                 } else {
-                    result(FlutterError(code: "INVALID_ARGS", message: "Missing arguments", details: nil))
+                    result(FlutterError(code: "INVALID_ARGUMENTS", message: "Missing required notification fields", details: nil))
+                }
+            } else if call.method == "removeNotification" {
+                if let args = call.arguments as? [String: Any],
+                   let id = args["id"] as? String {
+                    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
+                    result(nil)
+                } else {
+                    result(FlutterError(code: "INVALID_ARGUMENTS", message: "Missing id for removal", details: nil))
                 }
             } else {
                 result(FlutterMethodNotImplemented)
@@ -276,22 +302,16 @@ class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    private func showNotification(app: String, title: String, body: String, result: @escaping FlutterResult) {
+    private func showNotification(id: String, app: String, title: String, body: String, canReply: Bool, replyHandle: String?, result: @escaping FlutterResult) {
         let center = UNUserNotificationCenter.current()
         
-        // Request permissions if not already granted.
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error = error {
-                DispatchQueue.main.async {
-                    result(FlutterError(code: "PERMISSION_ERROR", message: error.localizedDescription, details: nil))
-                }
+                DispatchQueue.main.async { result(FlutterError(code: "PERMISSION_ERROR", message: error.localizedDescription, details: nil)) }
                 return
             }
-            
             if !granted {
-                DispatchQueue.main.async {
-                    result(FlutterError(code: "PERMISSION_DENIED", message: "User denied notification permission", details: nil))
-                }
+                DispatchQueue.main.async { result(FlutterError(code: "PERMISSION_DENIED", message: "User denied notification permission", details: nil)) }
                 return
             }
             
@@ -300,23 +320,47 @@ class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
             content.subtitle = title
             content.body = body
             content.sound = UNNotificationSound.default
+            content.threadIdentifier = app
             
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            if canReply, let handle = replyHandle {
+                content.categoryIdentifier = "REPLY_CATEGORY"
+                content.userInfo = ["replyHandle": handle]
+            }
+
+            let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
             
             center.add(request) { error in
                 DispatchQueue.main.async {
                     if let error = error {
                         result(FlutterError(code: "DELIVERY_ERROR", message: error.localizedDescription, details: nil))
                     } else {
-                        result(nil) // Success
+                        result(nil)
                     }
                 }
             }
         }
     }
     
-    // Allow notifications to be shown even if the macOS app is currently in the foreground.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .sound])
+        if #available(macOS 11.0, *) {
+            completionHandler([.banner, .sound, .badge])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        if response.actionIdentifier == "REPLY_ACTION",
+           let textResponse = response as? UNTextInputNotificationResponse {
+            let replyText = textResponse.userText
+            let userInfo = response.notification.request.content.userInfo
+            if let replyHandle = userInfo["replyHandle"] as? String {
+                methodChannel?.invokeMethod("sendReply", arguments: [
+                    "replyHandle": replyHandle,
+                    "text": replyText
+                ])
+            }
+        }
+        completionHandler()
     }
 }

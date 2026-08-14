@@ -15,5 +15,7 @@ class MessageTypes {
   static const String shareClipboard = 'share.clipboard';
   static const String requestCallHistory = 'request.call_history';
   static const String syncCallHistory = 'sync.call_history';
-  static const String notification = 'notification';
+  static const String notificationReply = 'action.notification_reply';
+  static const String syncNotification = 'sync.notification';
+  static const String syncNotificationRemoved = 'sync.notification.removed';
 }

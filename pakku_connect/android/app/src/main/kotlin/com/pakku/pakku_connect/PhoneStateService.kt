@@ -428,11 +428,13 @@ class PhoneStateService : Service() {
                             val handle = json.optString("replyHandle")
                             val text = json.optString("text")
                             if (handle.isNotEmpty()) {
+                                val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                val currentSessionId = prefs.getString("current_session_id", "unknown_session") ?: "unknown_session"
                                 val success = NotificationReplyManager.executeReply(
-                                    context = this,
+                                    context = this@PhoneStateService,
                                     handle = handle,
                                     replyText = text,
-                                    currentSessionId = currentSessionId ?: ""
+                                    currentSessionId = currentSessionId
                                 )
                                 if (!success) {
                                     Log.w(TAG, "Notification reply execution failed for handle $handle")

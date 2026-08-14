@@ -83,8 +83,14 @@ class CallNotificationListenerService : NotificationListenerService() {
             val syncEnabled = prefs.getBoolean("notification_sync_enabled", true)
             if (!syncEnabled) return
 
+            // Phase 5.4: Drop group summary notifications
+            if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+                return
+            }
+
             // Blocked packages filtering
-            if (packageName.contains("android") ||
+            if (packageName.startsWith("com.android.") ||
+                packageName.startsWith("android") ||
                 packageName.contains("systemui") ||
                 packageName.contains("banking") ||
                 packageName.contains("auth") ||
@@ -129,11 +135,14 @@ class CallNotificationListenerService : NotificationListenerService() {
 
             // Dispatch payload
             val timestamp = sbn.postTime
+            val appName = getAppName(packageName)
             val payload = """
                 {
                     "type": "sync.notification",
                     "version": 1,
+                    "id": "${escapeJson(sbn.key)}",
                     "package": "$packageName",
+                    "app": "${escapeJson(appName)}",
                     "title": "${escapeJson(title)}",
                     "body": "${escapeJson(body)}",
                     "timestamp": $timestamp,
@@ -142,10 +151,19 @@ class CallNotificationListenerService : NotificationListenerService() {
                 }
             """.trimIndent()
 
-            val intent = Intent("com.pakku.pakku_connect.SEND_MESSAGE")
-            intent.setPackage(this.packageName)
+            val intent = Intent(this, PhoneStateService::class.java)
+            intent.action = "com.pakku.pakku_connect.SEND_MESSAGE"
             intent.putExtra("payload", payload)
-            sendBroadcast(intent)
+            startService(intent)
+        }
+    }
+
+    private fun getAppName(packageName: String): String {
+        return try {
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(appInfo).toString()
+        } catch (e: Exception) {
+            packageName
         }
     }
 
@@ -166,6 +184,21 @@ class CallNotificationListenerService : NotificationListenerService() {
         if (isCall) {
             wasDialing = false
             hasSentAnswered = false
+        } else {
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val syncEnabled = prefs.getBoolean("notification_sync_enabled", true)
+            if (syncEnabled) {
+                val payload = """
+                    {
+                        "type": "sync.notification.removed",
+                        "id": "${escapeJson(sbn.key)}"
+                    }
+                """.trimIndent()
+                val intent = Intent(this, PhoneStateService::class.java)
+                intent.action = "com.pakku.pakku_connect.SEND_MESSAGE"
+                intent.putExtra("payload", payload)
+                startService(intent)
+            }
         }
     }
 }

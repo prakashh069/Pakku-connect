@@ -30,6 +30,7 @@
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		47490EDDE63F127FAC16124D /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6CDD27F4FFF46664810504A9 /* Pods_Runner.framework */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
+		AAB1C0DE00000003AABBCCDD /* NotificationPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1C0DE00000004AABBCCDD /* NotificationPanelController.swift */; };
 		AAB1C0DE00000001AABBCCDD /* ClipboardPanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB1C0DE00000002AABBCCDD /* ClipboardPanelController.swift */; };
 		F2B3ACE4619C87E53A6BFBD9 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D84988122372254C6190F3B6 /* Pods_RunnerTests.framework */; };
 /* End PBXBuildFile section */
@@ -93,6 +94,7 @@
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		99E204E564E78C608CE2894D /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
 		AAB1C0DE00000002AABBCCDD /* ClipboardPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardPanelController.swift; sourceTree = "<group>"; };
+		AAB1C0DE00000004AABBCCDD /* NotificationPanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPanelController.swift; sourceTree = "<group>"; };
 		D84988122372254C6190F3B6 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -186,6 +188,7 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC10E72044A3C60003C045 /* CallPanelController.swift */,
 				AAB1C0DE00000002AABBCCDD /* ClipboardPanelController.swift */,
+				AAB1C0DE00000004AABBCCDD /* NotificationPanelController.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
@@ -438,6 +441,7 @@
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				33CC10E62044A3C60003C045 /* CallPanelController.swift in Sources */,
 				AAB1C0DE00000001AABBCCDD /* ClipboardPanelController.swift in Sources */,
+				AAB1C0DE00000003AABBCCDD /* NotificationPanelController.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import '../../core/constants/message_types.dart';
-import '../../core/services/websocket_service.dart';
+import '../../../core/constants/message_types.dart';
+import '../../../core/services/websocket_service.dart';
 
 class NotificationManager extends ChangeNotifier {
   final WebSocketService _wsService;
@@ -32,7 +32,7 @@ class NotificationManager extends ChangeNotifier {
       final String? text = call.arguments['text'] as String?;
       
       if (replyHandle != null && text != null) {
-        _wsService.sendMessage({
+        _wsService.send({
           'type': 'action.notification_reply',
           'replyHandle': replyHandle,
           'text': text,
