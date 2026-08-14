@@ -168,6 +168,7 @@ class ClipboardSyncManager extends ChangeNotifier {
       };
     }
 
+
     _transport.send({
       'schemaVersion': 1,
       'type': MessageTypes.shareClipboard,
@@ -213,10 +214,33 @@ class ClipboardSyncManager extends ChangeNotifier {
       final mime = rawMime;
 
       final rawContent = payload['content'];
-      if (rawContent is! Map<String, dynamic>) return;
+      // In Phase 6 schema, content might be a direct string (base64/text) or a Map.
+      // The canonical ShareContent expects a Map, but if it's a direct string we construct one.
+      final ShareContent content;
+      if (rawContent is String) {
+        content = ShareContent(
+          encoding: mime.startsWith('text') ? ShareEncoding.utf8 : ShareEncoding.base64,
+          body: rawContent,
+        );
+      } else if (rawContent is Map<String, dynamic>) {
+        final parsed = ShareContent.fromJson(rawContent);
+        if (parsed == null) return;
+        content = parsed;
+      } else {
+        return;
+      }
+      
+      final rawSize = payload['size'];
+      final size = rawSize is int ? rawSize : null;
 
-      final content = ShareContent.fromJson(rawContent);
-      if (content == null) return;
+      final rawSha256 = payload['sha256'];
+      final sha256 = rawSha256 is String ? rawSha256 : null;
+
+      // Ensure image payloads have sha256
+      if (mime.startsWith('image') && sha256 == null) {
+        debugPrint('[ClipboardSyncManager] Dropped inbound image without SHA256.');
+        return;
+      }
 
       // Enforce encoded payload size limit on inbound.
       final body = content.body;
@@ -251,6 +275,8 @@ class ClipboardSyncManager extends ChangeNotifier {
         deviceName: deviceName,
         timestamp: timestamp,
         content: content,
+        size: size,
+        sha256: sha256,
       ));
     } catch (e) {
       // Per the failure contract: drop silently, never crash.

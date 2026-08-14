@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/services.dart';
 
 import '../models/relay_client.dart';
 import '../models/relay_config.dart';
@@ -33,9 +34,11 @@ class RelayServer {
     required String certPath,
     required String keyPath,
   }) async {
+    final certData = await rootBundle.load(certPath);
+    final keyData = await rootBundle.load(keyPath);
     final context = SecurityContext()
-      ..useCertificateChain(certPath)
-      ..usePrivateKey(keyPath);
+      ..useCertificateChainBytes(certData.buffer.asUint8List())
+      ..usePrivateKeyBytes(keyData.buffer.asUint8List());
 
     _server = await HttpServer.bindSecure(InternetAddress.anyIPv4, port, context);
     

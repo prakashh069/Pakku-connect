@@ -1074,16 +1074,33 @@ class PhoneStateService : Service() {
                             if (metadata != null) put("metadata", metadata)
                         }
 
+                        // Compute SHA-256 for image payloads only (required by macOS validation).
+                        val sha256: String? = if (mime != "text/plain") {
+                            try {
+                                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                                val hashBytes = digest.digest(
+                                    android.util.Base64.decode(encodedBody, android.util.Base64.NO_WRAP)
+                                )
+                                hashBytes.joinToString("") { "%02x".format(it) }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to compute sha256 — image dropped", e)
+                                return@Thread
+                            }
+                        } else null
+
+                        val innerPayload = JSONObject().apply {
+                            put("id",         java.util.UUID.randomUUID().toString())
+                            put("mime",       mime)
+                            put("deviceName", android.os.Build.MODEL)
+                            put("content",    contentObj)
+                            if (sha256 != null) put("sha256", sha256)
+                        }
+
                         val payload = JSONObject().apply {
                             put("schemaVersion", 1)
                             put("type", "share.clipboard")
                             put("timestamp", System.currentTimeMillis())
-                            put("payload", JSONObject().apply {
-                                put("id",         java.util.UUID.randomUUID().toString())
-                                put("mime",       mime)
-                                put("deviceName", android.os.Build.MODEL)
-                                put("content",    contentObj)
-                            })
+                            put("payload", innerPayload)
                         }
                         Log.d(TAG, "SEND outbound share (mime=$mime)")
                         sendAuthenticated(payload.toString())

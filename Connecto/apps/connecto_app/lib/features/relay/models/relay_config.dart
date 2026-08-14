@@ -1,5 +1,5 @@
 class RelayConfig {
-  static const int maxPayloadBytes = 5 * 1024 * 1024; // 5 MB
+  static const int maxPayloadBytes = 6 * 1024 * 1024; // 6 MB (Phase 6 envelope limit)
   static const int maxUnauthenticated = 10;
   static const Duration handshakeTimeout = Duration(milliseconds: 5000);
   static const Duration rateLimitWindow = Duration(milliseconds: 60000);
@@ -30,5 +30,6 @@ class RelayConfig {
     'action_result',
     'sync.notification',
     'device.telemetry',
+    // share.clipboard is bidirectional — removed from androidOnly
   };
 }

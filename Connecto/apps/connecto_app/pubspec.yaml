@@ -35,6 +35,8 @@ flutter:
   uses-material-design: true
   assets:
     - certs/device.der
+    - certs/device.crt
+    - certs/device.key
     - assets/images/
 
 flutter_launcher_icons:

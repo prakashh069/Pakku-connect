@@ -83,9 +83,25 @@ class MainActivity : FlutterActivity() {
                         val ip = call.argument<String>("ip")
                         val port = call.argument<Int>("port") ?: 8080
                         val certFp = call.argument<String>("certFp")
-                        // Security: hmacSecret is NOT written to SharedPreferences.
-                        // It is stored exclusively via FlutterSecureStorage (Dart side)
-                        // to prevent plaintext exposure through ADB backup or other apps.
+                        val hmacSecret = call.argument<String>("hmacSecret")
+                        
+                        try {
+                            val masterKey = androidx.security.crypto.MasterKey.Builder(this)
+                                .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+                                .build()
+
+                            val securePrefs = androidx.security.crypto.EncryptedSharedPreferences.create(
+                                this,
+                                "FlutterSecureKeyStorage",
+                                masterKey,
+                                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                            )
+                            securePrefs.edit().putString("VGhpc0lzVGhlUHJlZml4hmacSecret", hmacSecret).apply()
+                        } catch (e: Exception) {
+                            android.util.Log.e("MainActivity", "Failed to save hmacSecret to EncryptedSharedPreferences: ${e.message}")
+                        }
+
                         getSharedPreferences("pakku_prefs", Context.MODE_PRIVATE)
                             .edit()
                             .putString("ws_ip", ip)

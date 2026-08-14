@@ -76,23 +76,14 @@ class NotificationManager extends ChangeNotifier {
     }
   }
 
-  /// Maps a base notification ID (sbn.key) to a list of macOS specific identifiers.
-  /// Used to remove all related macOS notifications when the parent is dismissed on Android.
-  final Map<String, List<String>> _activeMacOsIds = {};
+  final Map<String, int> _lastBodyHashes = {};
 
   void _handleNotificationRemoved(Map<String, dynamic> data) {
     try {
       final id = data['id'] as String?;
       if (id != null) {
-        final List<String>? macOsIds = _activeMacOsIds.remove(id);
-        if (macOsIds != null && macOsIds.isNotEmpty) {
-          for (var macOsId in macOsIds) {
-            _channel.invokeMethod('removeNotification', {'id': macOsId});
-          }
-        } else {
-          // Fallback just in case
-          _channel.invokeMethod('removeNotification', {'id': id});
-        }
+        _lastBodyHashes.remove(id);
+        _channel.invokeMethod('removeNotification', {'id': id});
       }
     } catch (e) {
       debugPrint('NotificationManager: Error removing notification: $e');
@@ -116,19 +107,15 @@ class NotificationManager extends ChangeNotifier {
         return;
       }
 
-      // Make the macOS identifier strictly unique to the timestamp and body so we don't overwrite previous messages in the same chat
-      // but we ALSO want to ensure we don't bounce the EXACT SAME message twice.
-      final String macOsId = "$id:$timestamp:${body.hashCode}";
+      final String macOsId = id;
+      final int bodyHash = body.hashCode;
 
-      // If we are already displaying this exact message, ignore it to prevent macOS from dropping the banner again (bouncing).
-      final activeList = _activeMacOsIds[id];
-      if (activeList != null && activeList.contains(macOsId)) {
+      if (_lastBodyHashes[id] == bodyHash) {
         debugPrint('NotificationManager: Exact duplicate suppressed to prevent bouncing (macOsId=$macOsId).');
         return;
       }
 
-      // Track it so we can remove it when the parent 'id' is dismissed on Android
-      _activeMacOsIds.putIfAbsent(id, () => []).add(macOsId);
+      _lastBodyHashes[id] = bodyHash;
 
       // Dispatch to native macOS notification center
       _showNativeNotification(

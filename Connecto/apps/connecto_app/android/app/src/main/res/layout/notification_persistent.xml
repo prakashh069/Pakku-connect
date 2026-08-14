@@ -18,22 +18,22 @@
 
         <TextView
             android:id="@+id/title"
-            style="@style/TextAppearance.Compat.Notification.Title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Connected to Mac"
             android:textStyle="bold"
             android:textSize="14sp"
-            android:singleLine="true" />
+            android:singleLine="true"
+            android:textColor="#FFFFFF" />
 
         <TextView
             android:id="@+id/text"
-            style="@style/TextAppearance.Compat.Notification.Line2"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Ready to sync clipboard"
             android:textSize="12sp"
-            android:singleLine="true" />
+            android:singleLine="true"
+            android:textColor="#CCCCCC" />
     </LinearLayout>
 
     <Button
@@ -41,10 +41,9 @@
         android:layout_width="wrap_content"
         android:layout_height="36dp"
         android:text="SEND TO MAC"
-        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:background="@android:color/transparent"
         android:textColor="#1976D2"
         android:textStyle="bold"
-        android:textSize="12sp"
-        style="?android:attr/borderlessButtonStyle" />
+        android:textSize="12sp" />
 
 </LinearLayout>
