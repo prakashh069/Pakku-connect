@@ -60,13 +60,24 @@
             android:name=".ClipboardReaderActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:exported="true">
+        </activity>
+
+        <activity
+            android:name=".ShareTargetActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
-                <data android:mimeType="image/*" />
+                <data android:mimeType="image/jpeg" />
+                <data android:mimeType="image/png" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".ShareService"
+            android:exported="false" />
 
         <service
             android:name=".PhoneStateService"

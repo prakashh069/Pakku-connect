@@ -31,8 +31,9 @@ class ShareEvent {
   /// Sender's local Unix epoch milliseconds. Informational only.
   final int timestamp;
 
-  /// The content envelope for this event.
   final ShareContent content;
+  final int? size;
+  final String? sha256;
 
   const ShareEvent({
     required this.id,
@@ -40,5 +41,7 @@ class ShareEvent {
     required this.deviceName,
     required this.timestamp,
     required this.content,
+    this.size,
+    this.sha256,
   });
 }
