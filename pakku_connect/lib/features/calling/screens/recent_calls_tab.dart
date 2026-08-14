@@ -28,6 +28,12 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
         _searchQuery = _searchController.text;
       });
     });
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<RecentCallsManager>().requestCallHistory();
+      }
+    });
   }
 
   @override
@@ -49,6 +55,36 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
               color: colors.lightText.withAlpha(128),
               fontStyle: FontStyle.italic,
               fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionDeniedState(CustomColors colors) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline, size: 64, color: colors.lightText.withAlpha(50)),
+          const SizedBox(height: 16),
+          Text(
+            'Permission Denied',
+            style: TextStyle(
+              color: colors.lightText,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Please enable Call Logs permission\nin Android settings to sync history.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: colors.lightText.withAlpha(128),
+              fontStyle: FontStyle.italic,
+              fontSize: 14,
             ),
           ),
         ],
@@ -150,7 +186,7 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
                       children: [
                         Icon(iconData, size: 14, color: iconColor),
                         const SizedBox(width: 6),
-                        if (call.name.isNotEmpty) ...[
+                        if (call.number.isNotEmpty) ...[
                           Text(
                             call.number,
                             style: TextStyle(color: colors.lightText.withAlpha(178), fontSize: 13),
@@ -178,16 +214,17 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
                   ],
                 ),
               ),
-              IconButton(
-                icon: Icon(Icons.call, color: colors.accent),
-                onPressed: () {
-                  context.read<CallManager>().dial(
-                    call.number,
-                    contactName: call.name.isNotEmpty ? call.name : null,
-                  );
-                },
-                tooltip: 'Call again',
-              ),
+              if (call.number.isNotEmpty)
+                IconButton(
+                  icon: Icon(Icons.call, color: colors.accent),
+                  onPressed: () {
+                    context.read<CallManager>().dial(
+                      call.number,
+                      contactName: call.name.isNotEmpty ? call.name : null,
+                    );
+                  },
+                  tooltip: 'Call again',
+                ),
             ],
           ),
         ),
@@ -210,19 +247,21 @@ class _RecentCallsTabState extends State<RecentCallsTab> {
       backgroundColor: colors.background,
       body: Stack(
         children: [
-          history.isEmpty
-              ? (_searchQuery.isNotEmpty
-                  ? Center(
-                      child: Text(
-                        'No matching calls found',
-                        style: TextStyle(
-                          color: colors.lightText.withAlpha(128),
-                          fontSize: 16,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    )
-                  : _buildEmptyState(colors))
+          recentCallsManager.isPermissionDenied 
+              ? _buildPermissionDeniedState(colors)
+              : history.isEmpty
+                  ? (_searchQuery.isNotEmpty
+                      ? Center(
+                          child: Text(
+                            'No matching calls found',
+                            style: TextStyle(
+                              color: colors.lightText.withAlpha(128),
+                              fontSize: 16,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        )
+                      : _buildEmptyState(colors))
               : Padding(
                   padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 80.0, bottom: 8.0),
                   child: Container(

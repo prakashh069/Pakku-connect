@@ -14,15 +14,33 @@ import 'features/auth/screens/scan_screen.dart';
 import 'features/calling/screens/keypad_tab.dart';
 import 'features/calling/screens/recent_calls_tab.dart';
 import 'features/contacts/screens/contacts_tab.dart';
+import 'features/dashboard/models/device_telemetry.dart';
+import 'features/dashboard/services/telemetry_service.dart';
 import 'features/contacts/services/favorites_service.dart';
 import 'features/clipboard/services/clipboard_sync_manager.dart';
 import 'features/clipboard/services/clipboard_share_coordinator.dart';
+import 'features/notifications/services/notification_manager.dart';
 import 'core/services/window_visibility_service.dart';
 import 'core/services/platform_transport.dart';
 import 'core/services/crypto_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 WebSocketService? _wsService;
+
+Future<void> clearAllPairedState(SharedPreferences prefs) async {
+  await prefs.setBool('paired', false);
+  try {
+    const secureStorage = FlutterSecureStorage();
+    await secureStorage.delete(key: 'hmacSecret');
+    await secureStorage.delete(key: 'ws_ip');
+    await secureStorage.delete(key: 'ws_port');
+    await secureStorage.delete(key: 'cert_fp');
+  } catch (_) {}
+  await prefs.remove('hmacSecret');
+  await prefs.remove('ws_ip');
+  await prefs.remove('ws_port');
+  await prefs.remove('cert_fp');
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,6 +87,12 @@ class ConnectoApp extends StatelessWidget {
           create: (ctx) => ClipboardSyncManager(ctx.read<PlatformTransport>()),
           update: (_, pt, previous) => previous ?? ClipboardSyncManager(pt),
         ),
+        if (Platform.isMacOS)
+          ChangeNotifierProxyProvider<WebSocketService, NotificationManager>(
+            lazy: false,
+            create: (ctx) => NotificationManager(ctx.read<WebSocketService>()),
+            update: (_, ws, previous) => previous ?? NotificationManager(ws),
+          ),
       ],
       child: MaterialApp(
         title: 'Connecto',
@@ -114,19 +138,7 @@ class _RootRouterState extends State<RootRouter> {
           final prefs = await SharedPreferences.getInstance();
           final wasPaired = prefs.getBool('paired') ?? false;
           if (wasPaired) {
-            await prefs.setBool('paired', false);
-            try {
-              const secureStorage = FlutterSecureStorage();
-              await secureStorage.delete(key: 'hmacSecret');
-              await secureStorage.delete(key: 'ws_ip');
-              await secureStorage.delete(key: 'ws_port');
-              await secureStorage.delete(key: 'cert_fp');
-            } catch (_) {
-              await prefs.remove('hmacSecret');
-              await prefs.remove('ws_ip');
-              await prefs.remove('ws_port');
-              await prefs.remove('cert_fp');
-            }
+            await clearAllPairedState(prefs);
             navigatorKey.currentState
                 ?.pushNamedAndRemoveUntil('/', (route) => false);
           }
@@ -226,7 +238,7 @@ class _RootRouterState extends State<RootRouter> {
       };
 
       ws.onUnpair = () async {
-        await prefs.setBool('paired', false);
+        await clearAllPairedState(prefs);
         ws.reset(); // Clears credentials so we don't reconnect with stale secret
         navigatorKey.currentState
             ?.pushNamedAndRemoveUntil('/', (route) => false);
@@ -400,6 +412,13 @@ class _HomeScreenState extends State<HomeScreen> {
         if (mounted) {
           setState(() {
             _batteryData = data;
+          });
+        }
+      };
+      ws.onDeviceTelemetry = (data) {
+        if (mounted) {
+          setState(() {
+            telemetryService.updateTelemetry(DeviceTelemetry.fromJson(data));
           });
         }
       };
@@ -580,7 +599,62 @@ class _HomeScreenState extends State<HomeScreen> {
     final contactCount = ws.cachedContacts.length;
 
     Widget batteryWidget = const SizedBox();
-    if (_batteryData != null) {
+    
+    // Use TelemetryService if available, fallback to legacy battery_status
+    final telemetry = telemetryService.currentTelemetry;
+    if (telemetry != null) {
+      final level = telemetry.percentage;
+      final charging = telemetry.charging;
+      final network = telemetry.network;
+      
+      batteryWidget = Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text('$level%', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: colors.lightText)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(charging ? Icons.battery_charging_full : Icons.battery_full, size: 16, color: colors.lightText.withAlpha(150)),
+              const SizedBox(width: 6),
+              Text('Battery', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: colors.lightText.withAlpha(150))),
+            ],
+          ),
+          if (network != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(network == 'wifi' ? Icons.wifi : (network == 'cellular' ? Icons.cell_tower : Icons.signal_cellular_off), size: 14, color: colors.lightText.withAlpha(150)),
+                const SizedBox(width: 4),
+                Text(network.toUpperCase(), style: TextStyle(fontSize: 11, color: colors.lightText.withAlpha(150))),
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: level / 100.0,
+              minHeight: 4,
+              backgroundColor: Colors.white.withAlpha(20),
+              valueColor: AlwaysStoppedAnimation<Color>(charging ? colors.accent : Colors.white.withAlpha(200)),
+            ),
+          ),
+          if (charging) ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.bolt, size: 16, color: colors.accent),
+                const SizedBox(width: 4),
+                Text('Charging', style: TextStyle(fontSize: 13, color: colors.accent, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ]
+        ],
+      );
+    } else if (_batteryData != null) {
       final level = _batteryData!['level'] as int? ?? 0;
       final charging = _batteryData!['charging'] as bool? ?? false;
       
@@ -1001,31 +1075,22 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.logout),
             tooltip: 'Disconnect',
             onPressed: () async {
-              // Step 1: Clear all local paired state immediately (no network needed)
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('paired', false);
-              try {
-                const secureStorage = FlutterSecureStorage();
-                await secureStorage.delete(key: 'hmacSecret');
-                await secureStorage.delete(key: 'ws_ip');
-                await secureStorage.delete(key: 'ws_port');
-                await secureStorage.delete(key: 'cert_fp');
-              } catch (_) {
-                await prefs.remove('hmacSecret');
-                await prefs.remove('ws_ip');
-                await prefs.remove('ws_port');
-                await prefs.remove('cert_fp');
-              }
-
-              // Step 2: Try to notify other device (best-effort, non-blocking)
+              // Step 1: Try to notify other device (best-effort, non-blocking) before closing socket
               if (Platform.isMacOS) {
-                try { ws.send({'type': 'unpair'}); } catch (_) {}
+                try {
+                  await ws.send({'type': 'unpair'});
+                  await Future.delayed(const Duration(milliseconds: 100)); // allow flush
+                } catch (_) {}
               } else {
                 try {
                   const platform = MethodChannel('com.pakku.connect/platform');
                   platform.invokeMethod('unpair');
                 } catch (_) {}
               }
+
+              // Step 2: Clear all local paired state immediately (no network needed)
+              final prefs = await SharedPreferences.getInstance();
+              await clearAllPairedState(prefs);
               ws.reset(); // Clears credentials so we can't reconnect with stale secret
 
               // Step 3: Always navigate away regardless of network state

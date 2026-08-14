@@ -54,6 +54,8 @@ class AppDelegate: FlutterAppDelegate {
       ClipboardPanelController.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
       MacClipboardSync.shared.setup(binaryMessenger: flutterViewController.engine.binaryMessenger)
       
+      _ = NotificationPanelController(binaryMessenger: flutterViewController.engine.binaryMessenger)
+      
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didBecomeKeyNotification, object: mainFlutterWindow)
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didResignKeyNotification, object: mainFlutterWindow)
       NotificationCenter.default.addObserver(self, selector: #selector(windowVisibilityChanged), name: NSWindow.didMiniaturizeNotification, object: mainFlutterWindow)

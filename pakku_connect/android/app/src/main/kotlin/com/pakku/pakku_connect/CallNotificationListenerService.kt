@@ -1,6 +1,7 @@
 package com.pakku.pakku_connect
 
 import android.app.Notification
+import android.content.Context
 import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -76,7 +77,53 @@ class CallNotificationListenerService : NotificationListenerService() {
                 hasSentAnswered = true
                 wasDialing = false
             }
+        } else if (!isCall && !sbn.isOngoing) {
+            // General Notification Mirroring (Phase 5.3.1 + Phase 5.4)
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val syncEnabled = prefs.getBoolean("notification_sync_enabled", true)
+            if (!syncEnabled) return
+
+            // Blocked packages filtering
+            if (packageName.contains("android") ||
+                packageName.contains("systemui") ||
+                packageName.contains("banking") ||
+                packageName.contains("auth") ||
+                packageName.contains("dialer") ||
+                packageName.contains("phone") ||
+                packageName.contains("telecom") ||
+                packageName == "com.pakku.pakku_connect"
+            ) {
+                return
+            }
+
+            val extras = notification.extras
+            val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: ""
+            val body = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+
+            if (title.isBlank() && body.isBlank()) return
+
+            // Dispatch payload
+            val timestamp = sbn.postTime
+            val payload = """
+                {
+                    "type": "sync.notification",
+                    "version": 1,
+                    "package": "$packageName",
+                    "title": "${escapeJson(title)}",
+                    "body": "${escapeJson(body)}",
+                    "timestamp": $timestamp
+                }
+            """.trimIndent()
+
+            val intent = Intent("com.pakku.pakku_connect.SEND_MESSAGE")
+            intent.setPackage(this.packageName)
+            intent.putExtra("payload", payload)
+            sendBroadcast(intent)
         }
+    }
+
+    private fun escapeJson(input: String): String {
+        return input.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {

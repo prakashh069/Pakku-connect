@@ -73,6 +73,10 @@
             android:foregroundServiceType="connectedDevice"
             android:exported="false" />
 
+        <service
+            android:name=".DeviceTelemetryService"
+            android:exported="false" />
+
         <receiver
             android:name=".PakkuDeviceAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"

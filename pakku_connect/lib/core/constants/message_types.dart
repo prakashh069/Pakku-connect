@@ -15,4 +15,7 @@ class MessageTypes {
   static const String shareClipboard = 'share.clipboard';
   static const String requestCallHistory = 'request.call_history';
   static const String syncCallHistory = 'sync.call_history';
+  static const String callHistoryPermissionDenied = 'call_history.permission_denied';
+  static const String deviceTelemetry = 'device.telemetry';
+  static const String syncNotification = 'sync.notification';
 }

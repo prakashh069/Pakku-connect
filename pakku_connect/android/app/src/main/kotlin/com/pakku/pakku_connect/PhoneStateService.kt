@@ -55,6 +55,7 @@ class PhoneStateService : Service() {
     private var notificationReceiver: android.content.BroadcastReceiver? = null
     private var clipboardReceiver: android.content.BroadcastReceiver? = null
     private var batteryReceiver: android.content.BroadcastReceiver? = null
+    private var telemetryBridgeReceiver: android.content.BroadcastReceiver? = null
 
     private var previousCallState = TelephonyManager.CALL_STATE_IDLE
     private var lastState = TelephonyManager.CALL_STATE_IDLE
@@ -80,6 +81,26 @@ class PhoneStateService : Service() {
         createNotificationChannel()
         startNetworkMonitoring()
         cleanupStaleShareCache()
+        
+        telemetryBridgeReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == "com.pakku.pakku_connect.TELEMETRY_BRIDGE") {
+                    intent.getStringExtra("telemetry_json")?.let { json ->
+                        Log.d(TAG, "Forwarding telemetry bridge JSON")
+                        sendAuthenticated(json)
+                    }
+                }
+            }
+        }
+        val telemetryFilter = android.content.IntentFilter("com.pakku.pakku_connect.TELEMETRY_BRIDGE")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(telemetryBridgeReceiver, telemetryFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(telemetryBridgeReceiver, telemetryFilter)
+        }
+        
+        val telemetryIntent = Intent(this, DeviceTelemetryService::class.java)
+        startService(telemetryIntent)
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -403,6 +424,21 @@ class PhoneStateService : Service() {
                         return
                     }
                     when (msgType) {
+                        "action.notification_reply" -> {
+                            val handle = json.optString("replyHandle")
+                            val text = json.optString("text")
+                            if (handle.isNotEmpty()) {
+                                val success = NotificationReplyManager.executeReply(
+                                    context = this,
+                                    handle = handle,
+                                    replyText = text,
+                                    currentSessionId = currentSessionId ?: ""
+                                )
+                                if (!success) {
+                                    Log.w(TAG, "Notification reply execution failed for handle $handle")
+                                }
+                            }
+                        }
                         "auth_ack" -> {
                             Log.d(TAG, "Authentication successful")
                             authenticated = true
@@ -763,76 +799,17 @@ class PhoneStateService : Service() {
     private fun syncCallHistory() {
         Log.d(TAG, "Syncing call history...")
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            Log.w(TAG, "READ_CALL_LOG permission not granted. Skipping call history sync.")
+            Log.w(TAG, "READ_CALL_LOG permission not granted. Sending permission denied.")
+            val repo = CallHistoryRepository(this)
+            sendAuthenticated(repo.getPermissionDeniedPayload().toString())
             return
         }
         try {
-            val callsArray = JSONArray()
-            val uri = CallLog.Calls.CONTENT_URI
-            val projection = arrayOf(
-                CallLog.Calls._ID,
-                CallLog.Calls.NUMBER,
-                CallLog.Calls.CACHED_NAME,
-                CallLog.Calls.TYPE,
-                CallLog.Calls.DATE,
-                CallLog.Calls.DURATION
-            )
-            val sortOrder = "${CallLog.Calls.DATE} DESC"
-            val cursor = contentResolver.query(uri, projection, null, null, sortOrder)
-
-            cursor?.use {
-                val idIdx = it.getColumnIndex(CallLog.Calls._ID)
-                val numberIdx = it.getColumnIndex(CallLog.Calls.NUMBER)
-                val nameIdx = it.getColumnIndex(CallLog.Calls.CACHED_NAME)
-                val typeIdx = it.getColumnIndex(CallLog.Calls.TYPE)
-                val dateIdx = it.getColumnIndex(CallLog.Calls.DATE)
-                val durationIdx = it.getColumnIndex(CallLog.Calls.DURATION)
-
-                var count = 0
-                while (it.moveToNext() && count < 100) {
-                    count++
-                    val id = it.getString(idIdx)
-                    val number = it.getString(numberIdx) ?: ""
-                    val name = it.getString(nameIdx) ?: ""
-                    val typeInt = it.getInt(typeIdx)
-                    val date = it.getLong(dateIdx)
-                    val duration = it.getLong(durationIdx)
-
-                    val typeStr = when (typeInt) {
-                        CallLog.Calls.INCOMING_TYPE -> "incoming"
-                        CallLog.Calls.OUTGOING_TYPE -> "outgoing"
-                        CallLog.Calls.MISSED_TYPE -> "missed"
-                        CallLog.Calls.REJECTED_TYPE -> "rejected"
-                        CallLog.Calls.VOICEMAIL_TYPE -> "voicemail"
-                        CallLog.Calls.BLOCKED_TYPE -> "blocked"
-                        else -> "unknown"
-                    }
-
-                    val callObj = JSONObject().apply {
-                        put("id", id)
-                        put("name", name)
-                        put("number", number)
-                        put("type", typeStr)
-                        put("timestamp", date) // Using ms timestamp
-                        put("duration", duration)
-                    }
-                    callsArray.put(callObj)
-                }
-            }
-
-            val payloadObj = JSONObject().apply {
-                put("calls", callsArray)
-            }
-
-            val envelope = JSONObject().apply {
-                put("schemaVersion", 1)
-                put("type", "sync.call_history")
-                put("timestamp", System.currentTimeMillis() / 1000)
-                put("payload", payloadObj)
-            }
+            val repo = CallHistoryRepository(this)
+            val payloadObj = repo.getRecentCallsPayload()
 
             Log.d(TAG, "SEND sync.call_history")
-            sendAuthenticated(envelope.toString())
+            sendAuthenticated(payloadObj.toString())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync call history: ${e.message}")
         }
@@ -1259,6 +1236,11 @@ class PhoneStateService : Service() {
     override fun onDestroy() {
         // Enforce invariants during teardown
         stopWebSocket()
+        
+        telemetryBridgeReceiver?.let { unregisterReceiver(it) }
+        telemetryBridgeReceiver = null
+        val telemetryIntent = Intent(this, DeviceTelemetryService::class.java)
+        stopService(telemetryIntent)
         
         // Explicitly clean up singleton OkHttpClient
         httpClient?.let { client ->

@@ -48,6 +48,7 @@ class WebSocketService implements PlatformTransport {
   void Function()? onUnpair;
   void Function(Map<String, dynamic> data)? onPlatformMessage;
   void Function(Map<String, dynamic> batteryData)? onBatteryStatus;
+  void Function(Map<String, dynamic> data)? onDeviceTelemetry;
 
   WebSocketService({
     this.onIncomingCall,
@@ -280,6 +281,8 @@ class WebSocketService implements PlatformTransport {
         onDeviceState?.call(data);
       } else if (type == 'battery_status') {
         onBatteryStatus?.call(data);
+      } else if (type == MessageTypes.deviceTelemetry) {
+        onDeviceTelemetry?.call(data);
       } else if (type == MessageTypes.unpair) {
         onUnpair?.call();
       } else {
