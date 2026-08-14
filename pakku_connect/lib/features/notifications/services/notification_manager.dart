@@ -18,11 +18,27 @@ class NotificationManager extends ChangeNotifier {
   }
 
   void _init() {
+    _channel.setMethodCallHandler(_handleMethodCall);
     _messageSubscription = _wsService.messages.listen((message) {
       if (message['type'] == MessageTypes.syncNotification) {
         _handleNotificationMessage(message);
       }
     });
+  }
+
+  Future<dynamic> _handleMethodCall(MethodCall call) async {
+    if (call.method == 'sendReply') {
+      final String? replyHandle = call.arguments['replyHandle'] as String?;
+      final String? text = call.arguments['text'] as String?;
+      
+      if (replyHandle != null && text != null) {
+        _wsService.sendMessage({
+          'type': 'action.notification_reply',
+          'replyHandle': replyHandle,
+          'text': text,
+        });
+      }
+    }
   }
 
   Future<void> _handleNotificationMessage(Map<String, dynamic> message) async {
@@ -31,6 +47,8 @@ class NotificationManager extends ChangeNotifier {
       final String title = message['title'] as String? ?? '';
       final String body = message['body'] as String? ?? '';
       final int timestamp = message['timestamp'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+      final bool canReply = message['canReply'] as bool? ?? false;
+      final String? replyHandle = message['replyHandle'] as String?;
 
       if (title.isEmpty && body.isEmpty) return;
 
@@ -52,6 +70,8 @@ class NotificationManager extends ChangeNotifier {
       await _channel.invokeMethod('showNotification', {
         'title': title,
         'body': body,
+        'canReply': canReply,
+        'replyHandle': replyHandle,
       });
 
     } catch (e) {

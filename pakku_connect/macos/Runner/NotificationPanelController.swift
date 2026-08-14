@@ -15,7 +15,9 @@ class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
                 if let args = call.arguments as? [String: Any],
                    let title = args["title"] as? String,
                    let body = args["body"] as? String {
-                    self?.showLocalNotification(title: title, body: body)
+                    let canReply = args["canReply"] as? Bool ?? false
+                    let replyHandle = args["replyHandle"] as? String
+                    self?.showLocalNotification(title: title, body: body, canReply: canReply, replyHandle: replyHandle)
                     result(nil)
                 } else {
                     result(FlutterError(code: "INVALID_ARGUMENTS", message: "Missing title or body", details: nil))
@@ -33,13 +35,23 @@ class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
                 print("Notification authorization error: \(error.localizedDescription)")
             }
         }
+        
+        // Define reply category
+        let replyAction = UNTextInputNotificationAction(identifier: "REPLY_ACTION", title: "Reply", options: [], textInputButtonTitle: "Send", textInputPlaceholder: "Type your reply...")
+        let replyCategory = UNNotificationCategory(identifier: "REPLY_CATEGORY", actions: [replyAction], intentIdentifiers: [], options: [])
+        center.setNotificationCategories([replyCategory])
     }
 
-    private func showLocalNotification(title: String, body: String) {
+    private func showLocalNotification(title: String, body: String, canReply: Bool, replyHandle: String?) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = UNNotificationSound.default
+        
+        if canReply, let handle = replyHandle {
+            content.categoryIdentifier = "REPLY_CATEGORY"
+            content.userInfo = ["replyHandle": handle]
+        }
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         
@@ -55,5 +67,24 @@ class NotificationPanelController: NSObject, UNUserNotificationCenterDelegate {
                                 willPresent notification: UNNotification, 
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound, .badge])
+    }
+
+    // Handle user interaction, including text replies
+    func userNotificationCenter(_ center: UNUserNotificationCenter, 
+                                didReceive response: UNNotificationResponse, 
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        if response.actionIdentifier == "REPLY_ACTION",
+           let textResponse = response as? UNTextInputNotificationResponse {
+            let replyText = textResponse.userText
+            let userInfo = response.notification.request.content.userInfo
+            if let replyHandle = userInfo["replyHandle"] as? String {
+                // Forward back to Dart
+                methodChannel?.invokeMethod("sendReply", arguments: [
+                    "replyHandle": replyHandle,
+                    "text": replyText
+                ])
+            }
+        }
+        completionHandler()
     }
 }

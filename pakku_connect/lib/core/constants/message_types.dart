@@ -18,4 +18,5 @@ class MessageTypes {
   static const String callHistoryPermissionDenied = 'call_history.permission_denied';
   static const String deviceTelemetry = 'device.telemetry';
   static const String syncNotification = 'sync.notification';
+  static const String actionNotificationReply = 'action.notification_reply';
 }

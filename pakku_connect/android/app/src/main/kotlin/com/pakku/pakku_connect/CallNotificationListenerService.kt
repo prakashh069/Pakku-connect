@@ -102,6 +102,31 @@ class CallNotificationListenerService : NotificationListenerService() {
 
             if (title.isBlank() && body.isBlank()) return
 
+            var canReply = false
+            var replyHandle: String? = null
+            
+            // Phase 5.4: Detect RemoteInput and generate ReplyHandle
+            val sessionId = prefs.getString("current_session_id", "unknown_session") ?: "unknown_session"
+            
+            notification.actions?.forEach { action ->
+                val remoteInputs = action.remoteInputs
+                if (remoteInputs != null) {
+                    for (remoteInput in remoteInputs) {
+                        if (remoteInput.allowFreeFormInput) {
+                            canReply = true
+                            replyHandle = NotificationReplyManager.storeHandle(
+                                pendingIntent = action.actionIntent,
+                                remoteInputKey = remoteInput.resultKey,
+                                packageName = packageName,
+                                sessionId = sessionId
+                            )
+                            break
+                        }
+                    }
+                }
+                if (canReply) return@forEach
+            }
+
             // Dispatch payload
             val timestamp = sbn.postTime
             val payload = """
@@ -111,7 +136,9 @@ class CallNotificationListenerService : NotificationListenerService() {
                     "package": "$packageName",
                     "title": "${escapeJson(title)}",
                     "body": "${escapeJson(body)}",
-                    "timestamp": $timestamp
+                    "timestamp": $timestamp,
+                    "canReply": $canReply,
+                    "replyHandle": ${if (replyHandle != null) "\"$replyHandle\"" else "null"}
                 }
             """.trimIndent()
 
