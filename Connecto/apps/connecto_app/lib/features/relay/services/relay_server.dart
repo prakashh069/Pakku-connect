@@ -115,6 +115,20 @@ class RelayServer {
     void cleanup() {
       handshakeTimer?.cancel();
       _clients.remove(client);
+
+      if (client.authenticated) {
+        final disconnectMsg = jsonEncode({
+          'type': 'device_state',
+          'state': 'disconnected'
+        });
+        for (var c in _clients) {
+          if (c.authenticated) {
+            try {
+              c.socket.add(disconnectMsg);
+            } catch (_) {}
+          }
+        }
+      }
     }
 
     ws.listen((data) {

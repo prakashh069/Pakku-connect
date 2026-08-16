@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'features/dashboard/screens/dashboard_screen.dart';
+import 'features/home/widgets/android_unified_home.dart';
 import 'features/settings/screens/settings_screen.dart';
 import 'features/settings/services/settings_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -455,7 +456,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 2; // Default to Contacts
-  int _androidCurrentIndex = 0;
   Map<String, dynamic>? _batteryData;
   String _phoneMode = 'normal';
   String _previousPhoneMode = 'normal';
@@ -520,131 +520,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildAndroidStatusCard(
-      BuildContext context, CustomColors colors, WebSocketService ws) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Status card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colors.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: colors.border),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: colors.success.withAlpha(26),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.phonelink_ring,
-                        size: 28, color: colors.success),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Connecto Active',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: colors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Background service running',
-                    style: TextStyle(
-                        fontSize: 13,
-                        color: colors.textSecondary),
-                  ),
-                  const SizedBox(height: 20),
-                  Container(
-                    height: 1,
-                    color: colors.border,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.circle,
-                          size: 8, color: colors.success),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Ready for call & contact requests',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool('paired', false);
-                if (context.mounted) {
-                  Navigator.of(context).pushReplacementNamed('/');
-                }
-              },
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Unpair & Scan New Mac'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: colors.primary,
-                side: BorderSide(color: colors.primary.withAlpha(160)),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAndroidLayout(
-      BuildContext context, CustomColors colors, WebSocketService ws) {
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: IndexedStack(
-        index: _androidCurrentIndex,
-        children: [
-          _buildAndroidStatusCard(context, colors, ws),
-          DashboardScreen(sessionState: widget.sessionState),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _androidCurrentIndex,
-        onTap: (index) {
-          setState(() {
-            _androidCurrentIndex = index;
-          });
-        },
-        backgroundColor: colors.surface,
-        selectedItemColor: colors.accent,
-        unselectedItemColor: colors.lightText.withAlpha(150),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.phonelink_ring), label: 'Status'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard), label: 'Dashboard'),
-        ],
-      ),
-    );
-  }
 
   Widget _buildMacStatusRow(String label, String value, CustomColors colors) {
     return Padding(
@@ -1082,7 +957,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Platform.isMacOS
           ? _buildMacLayout(context, colors, ws)
-          : _buildAndroidLayout(context, colors, ws),
+          : AndroidUnifiedHome(sessionState: widget.sessionState, batteryData: _batteryData),
     );
   }
 }

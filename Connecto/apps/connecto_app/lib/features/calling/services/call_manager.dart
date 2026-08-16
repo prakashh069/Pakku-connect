@@ -228,10 +228,12 @@ class CallManager extends ChangeNotifier {
   }
 
   Future<void> dial(String number, {String? contactName}) async {
-    if (Platform.isMacOS && !wsService.isConnected) {
-      lastNativeError = 'Cannot make call: Phone is disconnected';
-      notifyListeners();
-      return;
+    if (Platform.isMacOS) {
+      if (!wsService.isConnected || wsService.deviceState != DeviceSessionState.connected) {
+        lastNativeError = 'Phone is offline. Connect your phone to make calls.';
+        notifyListeners();
+        return;
+      }
     }
 
     if (_currentCall != null && !isEnding) {

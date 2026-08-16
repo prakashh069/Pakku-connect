@@ -29,6 +29,9 @@ class WebSocketService implements PlatformTransport {
   String? _hmacSecret;
   String? _certFp;
   
+  DeviceSessionState _deviceState = DeviceSessionState.disconnected;
+  DeviceSessionState get deviceState => _deviceState;
+
   bool get isConnected => _authenticated;
 
   final StreamController<Map<String, dynamic>> _messageController = StreamController.broadcast();
@@ -59,6 +62,11 @@ class WebSocketService implements PlatformTransport {
     this.onUnpair,
   });
 
+  void _notifyDeviceState(DeviceSessionState state) {
+    _deviceState = state;
+    onDeviceStateChanged?.call(state);
+  }
+
   void connect(String url, {String? hmacSecret, String? certFp}) {
     _url = url;
     if (hmacSecret != null) {
@@ -81,7 +89,7 @@ class WebSocketService implements PlatformTransport {
     _paused = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    onDeviceStateChanged?.call(DeviceSessionState.connecting);
+    _notifyDeviceState(DeviceSessionState.connecting);
     _connectInternal();
   }
 
@@ -186,7 +194,7 @@ class WebSocketService implements PlatformTransport {
     _reconnectTimer?.cancel();
     final delay = Duration(seconds: (_attempt < 5) ? (1 << _attempt) : 30);
     _attempt++;
-    onDeviceStateChanged?.call(DeviceSessionState.reconnecting);
+    _notifyDeviceState(DeviceSessionState.reconnecting);
     _reconnectTimer = Timer(delay, _connectInternal);
   }
 
@@ -210,7 +218,7 @@ class WebSocketService implements PlatformTransport {
         _reconnectTimer = null;
         onConnectionChange?.call(true);
       } else if (type == 'hello') {
-        onDeviceStateChanged?.call(DeviceSessionState.connected);
+        _notifyDeviceState(DeviceSessionState.connected);
       } else if (type == MessageTypes.incomingCall) {
         onIncomingCall?.call(
           data['callId'] as String? ?? '',
@@ -225,10 +233,10 @@ class WebSocketService implements PlatformTransport {
         if (state is String) {
           switch (state) {
             case 'connected':
-              onDeviceStateChanged?.call(DeviceSessionState.connected);
+              _notifyDeviceState(DeviceSessionState.connected);
               break;
             case 'disconnected':
-              onDeviceStateChanged?.call(DeviceSessionState.disconnected);
+              _notifyDeviceState(DeviceSessionState.disconnected);
               break;
           }
         }
@@ -309,7 +317,7 @@ class WebSocketService implements PlatformTransport {
     _authenticated = false;
     _reconnectTimer?.cancel();
     _channel?.sink.close();
-    onDeviceStateChanged?.call(DeviceSessionState.disconnected);
+    _notifyDeviceState(DeviceSessionState.disconnected);
   }
 
   /// Full reset: clears stored credentials and stops all reconnection attempts.
@@ -326,7 +334,7 @@ class WebSocketService implements PlatformTransport {
     _authenticated = false;
     _reconnectTimer?.cancel();
     _channel?.sink.close();
-    onDeviceStateChanged?.call(DeviceSessionState.paused);
+    _notifyDeviceState(DeviceSessionState.paused);
   }
 
   void resume() {
