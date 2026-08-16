@@ -2,6 +2,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'features/dashboard/screens/dashboard_screen.dart';
+import 'features/settings/screens/settings_screen.dart';
+import 'features/settings/services/settings_service.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,6 +109,9 @@ class ConnectoApp extends StatelessWidget {
               : MethodChannelTransport(),
           dispose: (_, pt) => pt.dispose(),
         ),
+        ChangeNotifierProvider<SettingsService>(
+          create: (_) => SettingsService(),
+        ),
         ChangeNotifierProxyProvider<PlatformTransport, ClipboardSyncManager>(
           lazy: false,
           create: (ctx) => ClipboardSyncManager(ctx.read<PlatformTransport>()),
@@ -140,6 +147,7 @@ class ConnectoApp extends StatelessWidget {
         themeMode: ThemeMode.system,
         initialRoute: '/',
         routes: {
+          '/settings': (context) => const SettingsScreen(),
           '/': (_) => const RootRouter(),
           '/home': (_) => const HomeScreen(),
         },
@@ -447,6 +455,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 2; // Default to Contacts
+  int _androidCurrentIndex = 0;
   Map<String, dynamic>? _batteryData;
   String _phoneMode = 'normal';
   String _previousPhoneMode = 'normal';
@@ -472,6 +481,10 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             if (data['ringing'] != null) _isRinging = data['ringing'] == true;
             if (data['flashlight'] != null) _flashlightOn = data['flashlight'] == true;
+            if (data['mode'] != null) {
+              _phoneMode = data['mode'] as String;
+              _previousPhoneMode = _phoneMode;
+            }
           });
         }
       };
@@ -507,7 +520,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildAndroidLayout(
+  Widget _buildAndroidStatusCard(
       BuildContext context, CustomColors colors, WebSocketService ws) {
     return Center(
       child: Padding(
@@ -602,6 +615,37 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildAndroidLayout(
+      BuildContext context, CustomColors colors, WebSocketService ws) {
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: IndexedStack(
+        index: _androidCurrentIndex,
+        children: [
+          _buildAndroidStatusCard(context, colors, ws),
+          DashboardScreen(sessionState: widget.sessionState),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _androidCurrentIndex,
+        onTap: (index) {
+          setState(() {
+            _androidCurrentIndex = index;
+          });
+        },
+        backgroundColor: colors.surface,
+        selectedItemColor: colors.accent,
+        unselectedItemColor: colors.lightText.withAlpha(150),
+        items: const [
+          BottomNavigationBarItem(
+              icon: Icon(Icons.phonelink_ring), label: 'Status'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard), label: 'Dashboard'),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMacStatusRow(String label, String value, CustomColors colors) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
@@ -689,7 +733,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Container(
-      width: 280,
+      width: 240,
       color: colors.background.withAlpha(240),
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
       child: ListView(
@@ -971,7 +1015,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               Container(width: 1, color: colors.surface),
               SizedBox(
-                  width: 180, child: _buildMacStatusPanel(context, colors, ws)),
+                  width: 240, child: _buildMacStatusPanel(context, colors, ws)),
             ],
           ),
         ),
@@ -1002,63 +1046,7 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
             onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) {
-                  return AlertDialog(
-                    title: const Text('Settings'),
-                    content: Consumer<ClipboardSyncManager>(
-                      builder: (context, clipboardManager, child) {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CheckboxListTile(
-                              title: const Text('Enable Universal Clipboard'),
-                              value: clipboardManager.enabled,
-                              onChanged: (val) {
-                                if (val != null) {
-                                  clipboardManager.setEnabled(val);
-                                }
-                              },
-                            ),
-                            if (Platform.isAndroid)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0, vertical: 8.0),
-                                child: ElevatedButton.icon(
-                                  icon: const Icon(Icons.flash_on),
-                                  label: const Text('Enable Auto-Paste'),
-                                  onPressed: () {
-                                    const platform = MethodChannel(
-                                        'com.connecto.app/platform');
-                                    platform.invokeMethod(
-                                        'requestOverlayPermission');
-                                  },
-                                ),
-                              ),
-                            if (Platform.isAndroid)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                                child: Text(
-                                  'Requires "Display over other apps" permission to instantly paste text copied from your Mac in the background.',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.grey),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('Close'),
-                      ),
-                    ],
-                  );
-                },
-              );
+              Navigator.of(context).pushNamed('/settings');
             },
           ),
           IconButton(

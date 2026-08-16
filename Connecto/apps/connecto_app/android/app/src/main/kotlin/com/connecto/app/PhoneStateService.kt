@@ -1275,6 +1275,14 @@ class PhoneStateService : Service() {
                 put("state", "connected")
                 put("ringing", isRinging)
                 put("flashlight", isFlashlightOn)
+                
+                val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val ringerMode = when (audioManager.ringerMode) {
+                    AudioManager.RINGER_MODE_SILENT -> "silent"
+                    AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+                    else -> "normal"
+                }
+                put("mode", ringerMode)
             }
             sendAuthenticated(json.toString())
         } catch (e: Exception) {
