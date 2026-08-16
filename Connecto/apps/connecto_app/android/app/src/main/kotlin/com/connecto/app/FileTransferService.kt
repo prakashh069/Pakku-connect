@@ -81,31 +81,29 @@ class FileTransferService : Service() {
             Log.d("FileTransfer", "[PHASE7] PROCESSING URI: $uri")
             Log.d("FileTransfer", "[PHASE7] TRANSFER STARTED: $mimeType")
             Log.d("FileTransfer", "[FT-SERVICE] opening URI")
-            val (filename, size) = getFileInfo(uri)
+            var (filename, size) = getFileInfo(uri)
             Log.d("FileTransfer", "[PHASE7] FILE NAME: $filename")
             Log.d("FileTransfer", "[PHASE7] FILE SIZE: $size")
-            if (filename == null || size == null) throw Exception("Could not get file info")
-
-            if (size > 500 * 1024 * 1024) throw Exception("File too large (>500MB)")
             
-            val isValid = validateMime(filename, mimeType)
-            Log.d("FileTransfer", "[PHASE7] MIME VALIDATION RESULT: $isValid")
-            
-            if (!isValid) {
-                Log.e(TAG, "Unsupported MIME/Extension: $mimeType for $filename")
-                throw Exception("Unsupported MIME/Extension")
+            if (filename == null) {
+                val ext = if (mimeType.contains("image")) "jpg" else if (mimeType.contains("video")) "mp4" else "dat"
+                filename = "shared_file_${System.currentTimeMillis()}.$ext"
             }
-            Log.d(TAG, "MIME validation passed")
 
-            val totalChunks = Math.ceil(size.toDouble() / ChunkEngine.CHUNK_SIZE).toInt()
-
-            // 1. Streaming SHA256
             Log.d(TAG, "Copying to cache to preserve read access...")
             contentResolver.openInputStream(uri)?.use { input ->
                 tempFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             } ?: throw Exception("Cannot open stream for copying")
+
+            if (size == null || size <= 0L) {
+                size = tempFile.length()
+            }
+
+            if (size > 500 * 1024 * 1024) throw Exception("File too large (>500MB)")
+            
+            val totalChunks = Math.ceil(size.toDouble() / ChunkEngine.CHUNK_SIZE).toInt()
 
             Log.d(TAG, "Calculating SHA256...")
             val sha256 = tempFile.inputStream().use { 
@@ -148,6 +146,7 @@ class FileTransferService : Service() {
             Log.d(TAG, "macOS ready handshake received, starting chunks")
 
             // 4. Send Chunks
+            completeJob = Job() // Initialize early to prevent race condition if Mac replies instantly
             tempFile.inputStream().use { stream ->
                 val chunks = ChunkEngine.chunkStream(stream)
                 var chunkIndex = 0
@@ -183,7 +182,6 @@ class FileTransferService : Service() {
             
             Log.d("FileTransfer", "[PHASE7] FINAL CHUNKS SENT")
             Log.d("FileTransfer", "[PHASE7] WAITING FOR COMPLETE SIGNAL")
-            completeJob = Job()
             
             withTimeout(60000) {
                 completeJob?.join()
@@ -272,18 +270,7 @@ class FileTransferService : Service() {
     }
 
     private fun validateMime(filename: String, mime: String): Boolean {
-        if (mime.startsWith("text/")) return true
-        val ext = filename.substringAfterLast('.', "").lowercase()
-        return when (ext) {
-            "pdf", "doc", "docx", "txt", "rtf", "md", "odt" -> true
-            "xlsx", "xls", "csv" -> true
-            "pptx", "ppt" -> true
-            "epub" -> true
-            "jpg", "jpeg", "png", "webp", "gif", "bmp" -> true
-            "mp4" -> true
-            "zip" -> true
-            else -> false
-        }
+        return true // Mac UI is robust enough to handle any file, no need to strictly block on Android side
     }
 
     private fun cleanupAndStop(success: Boolean = false) {

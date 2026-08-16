@@ -11,6 +11,7 @@ import 'features/calling/services/call_manager.dart';
 import 'features/calling/services/recent_calls_manager.dart';
 import 'features/auth/screens/qr_pairing_screen.dart';
 import 'features/auth/screens/scan_screen.dart';
+import 'features/onboarding/screens/onboarding_screen.dart';
 import 'features/calling/screens/keypad_tab.dart';
 import 'features/calling/screens/recent_calls_tab.dart';
 import 'features/contacts/screens/contacts_tab.dart';
@@ -157,6 +158,7 @@ class RootRouter extends StatefulWidget {
 class _RootRouterState extends State<RootRouter> {
   bool _isLoading = true;
   bool _isPaired = false;
+  bool _hasSeenOnboarding = false;
   DeviceSessionState _sessionState = DeviceSessionState.disconnected;
   ClipboardShareCoordinator? _clipboardCoordinator;
 
@@ -198,6 +200,8 @@ class _RootRouterState extends State<RootRouter> {
     final clipManager = context.read<ClipboardSyncManager>();
     _clipboardCoordinator = ClipboardShareCoordinator();
     _clipboardCoordinator!.attach(clipManager.inboundShares);
+    
+    _hasSeenOnboarding = prefs.getBool('onboarding_complete') ?? false;
 
     if (Platform.isMacOS) {
       _isPaired = prefs.getBool('paired') ?? false;
@@ -409,6 +413,10 @@ class _RootRouterState extends State<RootRouter> {
       );
     }
 
+    if (!_hasSeenOnboarding) {
+      return const OnboardingScreen();
+    }
+
     if (Platform.isMacOS) {
       if (!_isPaired) {
         return const QrPairingScreen();
@@ -416,7 +424,12 @@ class _RootRouterState extends State<RootRouter> {
         return HomeScreen(sessionState: _sessionState);
       }
     }
-    return const ScanScreen();
+    
+    if (!_isPaired) {
+      return const ScanScreen();
+    } else {
+      return HomeScreen(sessionState: _sessionState);
+    }
   }
 }
 

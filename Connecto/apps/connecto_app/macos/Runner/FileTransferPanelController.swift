@@ -97,9 +97,10 @@ class FileTransferPanelController {
                 self.titleLabel.textColor = .labelColor
                 
                 let isPdfOrDoc = fileName.lowercased().hasSuffix(".pdf") || fileName.lowercased().hasSuffix(".doc") || fileName.lowercased().hasSuffix(".docx") || fileName.lowercased().hasSuffix(".txt") || fileName.lowercased().hasSuffix(".xls") || fileName.lowercased().hasSuffix(".csv") || fileName.lowercased().hasSuffix(".mp4")
+                let isSharedFilesZip = fileName.lowercased().hasPrefix("shared_files_")
                 
-                let fileTypeStr = isPdfOrDoc ? "File" : "Image"
-                let fileTypeStrPlural = isPdfOrDoc ? "Files" : "Images"
+                let fileTypeStr = (isPdfOrDoc || isSharedFilesZip) ? "File" : "Image"
+                let fileTypeStrPlural = (isPdfOrDoc || isSharedFilesZip) ? "Files" : "Images"
                 
                 if isDocumentComplete {
                     self.subtitleLabel.stringValue = "Download Complete"
@@ -121,18 +122,16 @@ class FileTransferPanelController {
             guard let p = self.panel else { return }
             if p.isVisible { return }
 
-            self.positionPanel()
+            let targetOrigin = self.getTargetOrigin()
             p.alphaValue = 0.0
+            p.setFrameOrigin(NSPoint(x: targetOrigin.x, y: targetOrigin.y - 15))
             p.orderFrontRegardless()
 
-            let origin = p.frame.origin
-            p.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
-
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.4
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                ctx.duration = 0.5
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
                 p.animator().alphaValue = 1.0
-                p.animator().setFrameOrigin(origin)
+                p.animator().setFrameOrigin(targetOrigin)
             }
         }
     }
@@ -144,41 +143,51 @@ class FileTransferPanelController {
             
             self.currentFilePaths = filePaths
             self.currentFolderPath = folderPath
+            self.downloadedUrls = nil // Reset state
             
             self.progressIndicator.isHidden = true
-            self.copyButton.isHidden = false
-            self.downloadButton.isHidden = false
-            
             self.lastProgressValue = -1 // Reset
             
             let isPdfOrDoc = fileName.lowercased().hasSuffix(".pdf") || fileName.lowercased().hasSuffix(".doc") || fileName.lowercased().hasSuffix(".docx") || fileName.lowercased().hasSuffix(".txt") || fileName.lowercased().hasSuffix(".xls") || fileName.lowercased().hasSuffix(".csv") || fileName.lowercased().hasSuffix(".mp4")
-            let fileTypeStr = isPdfOrDoc ? "File" : "Image"
-            let fileTypeStrPlural = isPdfOrDoc ? "Files" : "Images"
+            let isSharedFilesZip = fileName.lowercased().hasPrefix("shared_files_")
+            let isAutoSave = isPdfOrDoc || isBatchedZip || isSharedFilesZip
             
-            // Reset download button
-            self.downloadButton.title = "Download"
-            self.downloadButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
-            self.downloadButton.action = #selector(self.downloadClicked)
+            let fileTypeStrPlural = (isPdfOrDoc || isSharedFilesZip) ? "Files" : "Images"
             
             self.titleLabel.stringValue = "Connecto"
             self.titleLabel.textColor = .labelColor
-            self.subtitleLabel.stringValue = "✓ Transfer Complete"
             
-            if isBatchedZip {
+            if isAutoSave {
+                self.downloadedUrls = self.executeSaveLogic()
+                self.subtitleLabel.stringValue = "✓ Saved to Downloads"
+                
                 self.copyButton.isHidden = true
                 self.downloadButton.isHidden = false
                 self.downloadButton.frame = NSRect(x: 110, y: 16, width: 120, height: 28) // Centered
-                self.detailLabel.stringValue = "\(filePaths.count) \(fileTypeStrPlural) Received"
-            } else if isPdfOrDoc {
-                self.copyButton.isHidden = true
-                self.downloadButton.isHidden = false
-                self.downloadButton.frame = NSRect(x: 110, y: 16, width: 120, height: 28) // Centered
-                self.detailLabel.stringValue = fileName
+                
+                self.downloadButton.title = "Open Folder"
+                self.downloadButton.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.15).cgColor
+                self.downloadButton.contentTintColor = .labelColor
+                self.downloadButton.action = #selector(self.openClicked)
+                
+                if isBatchedZip {
+                    self.detailLabel.stringValue = "\(filePaths.count) \(fileTypeStrPlural) Received"
+                } else {
+                    self.detailLabel.stringValue = fileName
+                }
             } else {
+                self.subtitleLabel.stringValue = "✓ Transfer Complete"
+                
                 self.copyButton.isHidden = false
                 self.downloadButton.isHidden = false
                 self.copyButton.frame = NSRect(x: 60, y: 16, width: 105, height: 28)
                 self.downloadButton.frame = NSRect(x: 175, y: 16, width: 105, height: 28)
+                
+                self.downloadButton.title = "Download"
+                self.downloadButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
+                self.downloadButton.contentTintColor = .white
+                self.downloadButton.action = #selector(self.downloadClicked)
+                
                 self.detailLabel.stringValue = fileName
             }
 
@@ -187,18 +196,16 @@ class FileTransferPanelController {
             guard let p = self.panel else { return }
             if p.isVisible { return }
 
-            self.positionPanel()
+            let targetOrigin = self.getTargetOrigin()
             p.alphaValue = 0.0
+            p.setFrameOrigin(NSPoint(x: targetOrigin.x, y: targetOrigin.y - 15))
             p.orderFrontRegardless()
 
-            let origin = p.frame.origin
-            p.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
-
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.4
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                ctx.duration = 0.5
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
                 p.animator().alphaValue = 1.0
-                p.animator().setFrameOrigin(origin)
+                p.animator().setFrameOrigin(targetOrigin)
             }
         }
     }
@@ -227,18 +234,16 @@ class FileTransferPanelController {
             
             guard let p = self.panel else { return }
             if !p.isVisible {
-                self.positionPanel()
+                let targetOrigin = self.getTargetOrigin()
                 p.alphaValue = 0.0
+                p.setFrameOrigin(NSPoint(x: targetOrigin.x, y: targetOrigin.y - 15))
                 p.orderFrontRegardless()
                 
-                let origin = p.frame.origin
-                p.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
-                
                 NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.4
-                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    ctx.duration = 0.5
+                    ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.3, 1.0)
                     p.animator().alphaValue = 1.0
-                    p.animator().setFrameOrigin(origin)
+                    p.animator().setFrameOrigin(targetOrigin)
                 }
             }
         }
@@ -265,10 +270,11 @@ class FileTransferPanelController {
         p.hasShadow           = true
 
         let visualEffect = NSVisualEffectView(frame: rect)
-        visualEffect.material       = .hudWindow
+        visualEffect.material       = .popover
         visualEffect.blendingMode   = .behindWindow
         visualEffect.state          = .active
         visualEffect.wantsLayer     = true
+        visualEffect.layer?.backgroundColor = NSColor.clear.cgColor
         visualEffect.layer?.cornerRadius  = 20
         visualEffect.layer?.masksToBounds = true
 
@@ -341,14 +347,14 @@ class FileTransferPanelController {
         panel = p
     }
 
-    private func positionPanel() {
-        guard let p = panel, let screen = NSScreen.main else { return }
+    private func getTargetOrigin() -> NSPoint {
+        guard let p = panel, let screen = NSScreen.main else { return .zero }
         let sr = screen.visibleFrame
         let padding: CGFloat = 24
-        p.setFrameOrigin(NSPoint(
+        return NSPoint(
             x: sr.maxX - p.frame.width - padding,
             y: sr.maxY - p.frame.height - padding
-        ))
+        )
     }
 
     @objc private func copyClicked() {
@@ -376,8 +382,13 @@ class FileTransferPanelController {
             pasteboard.writeObjects(images)
         }
         
+        let transition = CATransition()
+        transition.duration = 0.25
+        transition.type = .fade
+        self.copyButton.layer?.add(transition, forKey: "titleFade")
+        
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.2
+            ctx.duration = 0.25
             self.copyButton.animator().title = "✓ Copied"
             self.copyButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
             self.copyButton.contentTintColor = .white
@@ -386,47 +397,64 @@ class FileTransferPanelController {
         scheduleDismiss(delay: 2.0)
     }
 
-    @objc private func downloadClicked() {
-        self.dismissWorkItem?.cancel() // Pause dismiss
-        print("[PHASE7] DOWNLOAD BUTTON CLICKED")
+    @discardableResult
+    private func executeSaveLogic() -> [URL]? {
+        guard let paths = currentFilePaths, !paths.isEmpty else { return nil }
+        let fileManager = FileManager.default
+        let homeDir = fileManager.homeDirectoryForCurrentUser
+        let connectoDir = homeDir.appendingPathComponent("Downloads/Connecto")
         
-        if let paths = currentFilePaths, !paths.isEmpty {
-            let fileManager = FileManager.default
-            let homeDir = fileManager.homeDirectoryForCurrentUser
-            let connectoDir = homeDir.appendingPathComponent("Downloads/Connecto")
+        do {
+            if !fileManager.fileExists(atPath: connectoDir.path) {
+                try fileManager.createDirectory(at: connectoDir, withIntermediateDirectories: true, attributes: nil)
+            }
             
-            do {
-                if !fileManager.fileExists(atPath: connectoDir.path) {
-                    try fileManager.createDirectory(at: connectoDir, withIntermediateDirectories: true, attributes: nil)
+            var finalUrls: [URL] = []
+            for path in paths {
+                let sourceUrl = URL(fileURLWithPath: path)
+                let fileName = sourceUrl.lastPathComponent
+                var destUrl = connectoDir.appendingPathComponent(fileName)
+                
+                var counter = 2
+                while fileManager.fileExists(atPath: destUrl.path) {
+                    let name = sourceUrl.deletingPathExtension().lastPathComponent
+                    let ext = sourceUrl.pathExtension
+                    let newName = ext.isEmpty ? "\(name)_\(counter)" : "\(name)_\(counter).\(ext)"
+                    destUrl = connectoDir.appendingPathComponent(newName)
+                    counter += 1
                 }
                 
-                var finalUrls: [URL] = []
-                for path in paths {
-                    let sourceUrl = URL(fileURLWithPath: path)
-                    let fileName = sourceUrl.lastPathComponent
-                    var destUrl = connectoDir.appendingPathComponent(fileName)
-                    
-                    var counter = 2
-                    while fileManager.fileExists(atPath: destUrl.path) {
-                        let name = sourceUrl.deletingPathExtension().lastPathComponent
-                        let ext = sourceUrl.pathExtension
-                        let newName = ext.isEmpty ? "\(name)_\(counter)" : "\(name)_\(counter).\(ext)"
-                        destUrl = connectoDir.appendingPathComponent(newName)
-                        counter += 1
-                    }
-                    
+                if fileManager.fileExists(atPath: sourceUrl.path) {
                     try fileManager.moveItem(at: sourceUrl, to: destUrl)
                     finalUrls.append(destUrl)
                 }
-                
-                self.downloadedUrls = finalUrls
-                
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
+            }
+            return finalUrls
+        } catch {
+            print("[PHASE9] ERROR SAVING FILES: \(error)")
+            return nil
+        }
+    }
+
+    @objc private func downloadClicked() {
+        self.dismissWorkItem?.cancel() // Pause dismiss
+        
+        if self.downloadedUrls == nil {
+            self.downloadedUrls = executeSaveLogic()
+        }
+        
+        if self.downloadedUrls != nil {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                    
+                    let transition1 = CATransition()
+                    transition1.duration = 0.25
+                    transition1.type = .fade
+                    self.downloadButton.layer?.add(transition1, forKey: "titleFade1")
                     
                     // State 1: ✓ Saved
                     NSAnimationContext.runAnimationGroup { ctx in
-                        ctx.duration = 0.2
+                        ctx.duration = 0.25
                         self.downloadButton.animator().title = "✓ Saved"
                         self.downloadButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
                     }
@@ -434,8 +462,13 @@ class FileTransferPanelController {
                     // State 2: Open Folder
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                         if let panel = self.panel, panel.isVisible {
+                            let transition2 = CATransition()
+                            transition2.duration = 0.25
+                            transition2.type = .fade
+                            self.downloadButton.layer?.add(transition2, forKey: "titleFade2")
+                            
                             NSAnimationContext.runAnimationGroup { ctx in
-                                ctx.duration = 0.2
+                                ctx.duration = 0.25
                                 self.downloadButton.animator().title = "Open Folder"
                                 self.downloadButton.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.15).cgColor
                                 self.downloadButton.contentTintColor = .labelColor
@@ -444,11 +477,6 @@ class FileTransferPanelController {
                             self.scheduleDismiss(delay: 5.0)
                         }
                     }
-                }
-                
-            } catch {
-                print("[PHASE8] ERROR SAVING FILES: \(error)")
-                self.scheduleDismiss(delay: 2.0)
             }
         } else {
             scheduleDismiss(delay: 1.0)
@@ -486,14 +514,22 @@ class FileTransferPanelController {
     private func dismissPanel() {
         DispatchQueue.main.async { [weak self] in
             guard let self, let p = self.panel, p.isVisible else { return }
+            
+            // Implicit auto-save removed per user request for single images.
+            // Other file types are already auto-saved in showPopup.
+            
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.35 // Slower, smoother fade
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                ctx.duration = 0.3 // Faster drop out
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.7, 0.0, 0.84, 0.0) // Smooth ease-in
                 p.animator().alphaValue = 0.0
                 let origin = p.frame.origin
-                p.animator().setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
+                p.animator().setFrameOrigin(NSPoint(x: origin.x, y: origin.y - 15)) // Drops down slightly
             }, completionHandler: {
                 p.orderOut(nil)
+                
+                // Reset frame to correct position after dismiss
+                p.setFrameOrigin(self.getTargetOrigin())
+                
                 self.currentFilePaths = nil
                 self.currentFileName = nil
                 

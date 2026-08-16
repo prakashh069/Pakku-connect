@@ -227,14 +227,7 @@ class FileTransferMimeTypes {
   static const generic = 'application/octet-stream';
 
   static bool isAllowed(String mime) {
-    if (mime.startsWith('text/')) return true;
-    if (mime.startsWith('image/')) return true;
-    if (mime == 'application/zip') return true;
-    return [
-      pdf, rtf, odt, doc, docx, 
-      xls, xlsx, ppt, pptx, 
-      epub, mp4, generic
-    ].contains(mime);
+    return true; // Allow all mime types to be transferred
   }
 }
 

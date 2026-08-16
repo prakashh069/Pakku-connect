@@ -36,8 +36,10 @@ object TransferQueueManager {
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val isImageBatch = type?.startsWith("image/") == true
+                val zipPrefix = if (isImageBatch) "Shared_Images_" else "Shared_Files_"
                 val batchId = java.util.UUID.randomUUID().toString()
-                val zipFile = File(appContext.cacheDir, "Shared_Images_$batchId.zip")
+                val zipFile = File(appContext.cacheDir, "$zipPrefix$batchId.zip")
                 if (zipFile.exists()) {
                     zipFile.delete()
                 }

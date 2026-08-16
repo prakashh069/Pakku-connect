@@ -23,11 +23,30 @@ class FileTransferActivity : Activity() {
 
         val intent = intent
         val action = intent.action
-        val type = intent.type
+        var type = intent.type ?: "application/octet-stream"
 
-        if (Intent.ACTION_SEND == action && type != null) {
+        if (Intent.ACTION_SEND == action) {
             @Suppress("DEPRECATION")
-            val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            var uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            
+            if (uri == null && intent.clipData != null && intent.clipData!!.itemCount > 0) {
+                uri = intent.clipData!!.getItemAt(0).uri
+            }
+            
+            if (uri == null && intent.hasExtra(Intent.EXTRA_TEXT)) {
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (text != null) {
+                    try {
+                        val tempFile = java.io.File(cacheDir, "Shared_Text_${System.currentTimeMillis()}.txt")
+                        tempFile.writeText(text)
+                        uri = Uri.fromFile(tempFile)
+                        type = "text/plain"
+                    } catch (e: Exception) {
+                        Log.e("FileTransfer", "Failed to write text", e)
+                    }
+                }
+            }
+            
             Log.d("FileTransfer", "[FT-ACTIVITY] uri=$uri")
             Log.d("FileTransfer", "[PHASE7] FileTransferActivity received URI")
             
@@ -37,9 +56,12 @@ class FileTransferActivity : Activity() {
                     this.action = action
                     this.type = type
                     putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = android.content.ClipData.newRawUri("", uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 startService(serviceIntent)
+            } else {
+                android.widget.Toast.makeText(this, "Connecto: No file or text found to share", android.widget.Toast.LENGTH_LONG).show()
             }
         } else if (Intent.ACTION_SEND_MULTIPLE == action && type != null) {
             @Suppress("DEPRECATION")
