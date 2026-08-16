@@ -205,6 +205,24 @@ class MainActivity : FlutterActivity() {
                     "getDeviceName" -> {
                         result.success(android.os.Build.MODEL)
                     }
+                    "getClipboardData" -> {
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        if (!clipboard.hasPrimaryClip()) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        val clip = clipboard.primaryClip
+                        val text = clip?.getItemAt(0)?.text?.toString()
+                        val label = clipboard.primaryClipDescription?.label?.toString()
+                        
+                        val isRemote = label?.startsWith("Copied from") == true
+                        
+                        val data = mapOf(
+                            "text" to text,
+                            "isRemote" to isRemote
+                        )
+                        result.success(data)
+                    }
                     else -> result.notImplemented()
                 }
             }

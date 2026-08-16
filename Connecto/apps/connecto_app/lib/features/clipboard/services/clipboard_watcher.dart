@@ -99,17 +99,35 @@ class ClipboardWatcher with WidgetsBindingObserver {
 
   Future<void> _checkClipboard() async {
     try {
-      final data = await Clipboard.getData(Clipboard.kTextPlain);
-      final text = data?.text ?? '';
+      String text = '';
+      bool isRemote = false;
+
+      if (Platform.isAndroid) {
+        const channel = MethodChannel('com.connecto.app/platform');
+        final result = await channel.invokeMethod<Map<Object?, Object?>>('getClipboardData');
+        if (result != null) {
+          text = (result['text'] as String?) ?? '';
+          isRemote = (result['isRemote'] as bool?) ?? false;
+        }
+      } else {
+        final data = await Clipboard.getData(Clipboard.kTextPlain);
+        text = data?.text ?? '';
+      }
 
       if (text.isNotEmpty && text != _lastClipboardContent) {
         _lastClipboardContent = text;
-        onClipboardChanged(text, null);
+        if (!isRemote) {
+          onClipboardChanged(text, null);
+        } else {
+          debugPrint('ClipboardWatcher: Ignored remote clipboard update based on label');
+        }
       } else if (text.isEmpty &&
           _lastClipboardContent != null &&
           _lastClipboardContent!.isNotEmpty) {
         _lastClipboardContent = text;
-        onClipboardChanged(text, null);
+        if (!isRemote) {
+          onClipboardChanged(text, null);
+        }
       }
     } catch (e) {
       // Ignore platform exceptions (e.g., clipboard denied when backgrounded on Android).

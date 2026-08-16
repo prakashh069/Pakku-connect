@@ -169,6 +169,77 @@ class PhoneStateService : Service() {
                 }
             }
             return START_STICKY
+        } else if (intent?.action == "com.connecto.app.SEND_FILE_CHUNK") {
+            Log.d("FileTransfer", "[PHASE7] Intent SEND_FILE_CHUNK received")
+            val chunkPath = intent.getStringExtra("chunkPath")
+            val transferId = intent.getStringExtra("transferId")
+            val chunkIndex = intent.getIntExtra("chunkIndex", -1)
+            val totalChunks = intent.getIntExtra("totalChunks", -1)
+            Log.d("FileTransfer", "[PHASE7] Parsed intent extras: chunkPath=$chunkPath, transferId=$transferId, chunkIndex=$chunkIndex, totalChunks=$totalChunks")
+            
+            if (chunkPath != null && transferId != null && chunkIndex >= 0 && totalChunks > 0) {
+                try {
+                    val file = java.io.File(chunkPath)
+                    
+                    // Security Validation
+                    val cacheDirPath = java.io.File(cacheDir, "connecto_transfer").canonicalPath
+                    val canonicalFilePath = file.canonicalPath
+                    if (!canonicalFilePath.startsWith(cacheDirPath)) {
+                        throw SecurityException("Invalid chunk path")
+                    }
+                    if (file.name != "$chunkIndex.chunk") {
+                        throw SecurityException("Invalid chunk filename")
+                    }
+                    if (!file.exists()) {
+                        Log.e("FileTransfer", "[PHASE7] Chunk cache missing: $chunkPath")
+                        return START_STICKY
+                    }
+                    if (file.length() > 1024 * 1024) { // >1MB
+                        throw SecurityException("Chunk file too large")
+                    }
+                    
+                    Log.d("FileTransfer", "[PHASE7] Reading chunk from cache")
+                    
+                    // Buffered Read
+                    val buffer = CharArray(8192)
+                    val builder = StringBuilder(file.length().toInt())
+                    java.io.InputStreamReader(java.io.FileInputStream(file), Charsets.UTF_8).use { reader ->
+                        var charsRead = reader.read(buffer)
+                        while (charsRead != -1) {
+                            builder.append(buffer, 0, charsRead)
+                            charsRead = reader.read(buffer)
+                        }
+                    }
+                    val base64Payload = builder.toString()
+                    
+                    val jsonStr = try {
+                        org.json.JSONObject().apply {
+                            put("type", "file.transfer.chunk")
+                            put("transferId", transferId)
+                            put("chunkIndex", chunkIndex)
+                            put("totalChunks", totalChunks)
+                            put("payload", base64Payload)
+                        }.toString()
+                    } catch(e: Exception) {
+                        Log.e("FileTransfer", "[PHASE7] Chunk forwarding failed")
+                        throw e
+                    }
+                    
+                    Log.d("FileTransfer", "[PHASE7] Sending chunk over WebSocket")
+                    
+                    try {
+                        sendAuthenticated(jsonStr)
+                        Log.d("FileTransfer", "[PHASE7] Chunk forwarded successfully")
+                        Log.d("FileTransfer", "[PHASE7] PhoneStateService forwarding chunk")
+                    } catch (e: Exception) {
+                        Log.e("FileTransfer", "[PHASE7] WebSocket chunk send failed", e)
+                        // Keep file on disk if send fails
+                    }
+                } catch (e: Exception) {
+                    Log.e("FileTransfer", "Failed to forward chunk from disk", e)
+                }
+            }
+            return START_STICKY
         }
 
         val sendIntent = Intent(this, ClipboardReaderActivity::class.java).apply {

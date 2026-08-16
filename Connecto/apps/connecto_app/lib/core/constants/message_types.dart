@@ -18,4 +18,13 @@ class MessageTypes {
   static const String notificationReply = 'action.notification_reply';
   static const String syncNotification = 'sync.notification';
   static const String syncNotificationRemoved = 'sync.notification.removed';
+  
+  // Phase 7: File Transfer Framework
+  static const String fileTransferStart = 'file.transfer.start';
+  static const String fileTransferReady = 'file.transfer.ready';
+  static const String fileTransferChunk = 'file.transfer.chunk';
+  static const String fileTransferChunkAck = 'file.transfer.chunk_ack';
+  static const String fileTransferComplete = 'file.transfer.complete';
+  static const String fileTransferError = 'file.transfer.error';
+  static const String fileTransferCancel = 'file.transfer.cancel';
 }

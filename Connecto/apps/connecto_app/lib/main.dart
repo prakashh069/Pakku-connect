@@ -18,6 +18,7 @@ import 'features/contacts/services/favorites_service.dart';
 import 'features/clipboard/services/clipboard_sync_manager.dart';
 import 'features/clipboard/services/clipboard_share_coordinator.dart';
 import 'features/share/services/share_manager.dart';
+import 'features/file_transfer/services/file_transfer_manager.dart';
 import 'features/relay/services/relay_manager.dart';
 import 'core/services/window_visibility_service.dart';
 import 'core/services/platform_transport.dart';
@@ -114,6 +115,13 @@ class ConnectoApp extends StatelessWidget {
             ctx.read<PlatformTransport>()
           )..start(),
           dispose: (_, sm) => sm.stop(),
+        ),
+        Provider<FileTransferManager>(
+          lazy: false,
+          create: (ctx) => FileTransferManager(
+            ctx.read<PlatformTransport>()
+          ),
+          dispose: (_, manager) => manager.dispose(),
         ),
         ChangeNotifierProxyProvider<PlatformTransport, NotificationManager>(
           lazy: false,

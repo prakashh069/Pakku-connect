@@ -21,6 +21,7 @@ dependencies:
   intl: ^0.20.3
   uuid: ^4.6.0
   pasteboard: ^0.5.0
+  archive: ^4.0.9
 
 dev_dependencies:
   flutter_test:

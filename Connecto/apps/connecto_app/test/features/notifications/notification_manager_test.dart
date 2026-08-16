@@ -56,7 +56,7 @@ void main() {
 
   test('NotificationManager forwards valid notification to MethodChannel', () async {
     mockTransport.simulateIncomingMessage({
-      'type': MessageTypes.notification,
+      'type': MessageTypes.syncNotification,
       'id': 'com.example:123',
       'package': 'com.example',
       'app': 'Example App',
@@ -75,7 +75,7 @@ void main() {
 
   test('NotificationManager deduplicates messages within 500ms window', () async {
     final payload = {
-      'type': MessageTypes.notification,
+      'type': MessageTypes.syncNotification,
       'id': 'com.example:123',
       'package': 'com.example',
       'app': 'Example App',
@@ -93,7 +93,7 @@ void main() {
 
   test('NotificationManager allows different IDs immediately', () async {
     mockTransport.simulateIncomingMessage({
-      'type': MessageTypes.notification,
+      'type': MessageTypes.syncNotification,
       'id': 'com.example:123',
       'package': 'com.example',
       'app': 'Example App',
@@ -102,7 +102,7 @@ void main() {
     });
 
     mockTransport.simulateIncomingMessage({
-      'type': MessageTypes.notification,
+      'type': MessageTypes.syncNotification,
       'id': 'com.example:456',
       'package': 'com.example',
       'app': 'Example App',
