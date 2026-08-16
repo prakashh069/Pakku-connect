@@ -7,8 +7,11 @@ class FileTransferPanelController {
     private var panel: NSPanel?
     private var methodChannel: FlutterMethodChannel?
 
-    private var previewLabel: NSTextField!
+    private var titleLabel: NSTextField!
+    private var subtitleLabel: NSTextField!
+    private var detailLabel: NSTextField!
     private var progressIndicator: NSProgressIndicator!
+    
     private var copyButton: NSButton!
     private var downloadButton: NSButton!
     private var dismissButton: NSButton!
@@ -18,6 +21,8 @@ class FileTransferPanelController {
     private var currentFolderPath: String?
     private var downloadedUrls: [URL]?
     private var dismissWorkItem: DispatchWorkItem?
+    
+    private var lastProgressValue: Int = -1
 
     private init() {}
 
@@ -54,6 +59,11 @@ class FileTransferPanelController {
                 
                 self?.updateProgress(progress: progress, fileName: fileName, isBatchedZip: isBatchedZip, batchCount: batchCount, isDocumentComplete: isDocumentComplete)
                 result(nil)
+            } else if call.method == "showFileTransferError", let args = call.arguments as? [String: Any] {
+                // Future use: Error UI endpoint
+                let reason = args["reason"] as? String ?? "Unknown error"
+                self?.showError(reason: reason)
+                result(nil)
             } else {
                 result(FlutterMethodNotImplemented)
             }
@@ -68,21 +78,41 @@ class FileTransferPanelController {
             self.copyButton.isHidden = true
             self.downloadButton.isHidden = true
             self.progressIndicator.isHidden = false
-            self.progressIndicator.doubleValue = progress * 100.0
             
-            let isPdfOrDoc = fileName.lowercased().hasSuffix(".pdf") || fileName.lowercased().hasSuffix(".doc") || fileName.lowercased().hasSuffix(".docx") || fileName.lowercased().hasSuffix(".txt") || fileName.lowercased().hasSuffix(".xls") || fileName.lowercased().hasSuffix(".csv") || fileName.lowercased().hasSuffix(".mp4")
+            // Smooth progress update
+            let targetProgress = progress * 100.0
+            let currentInt = Int(targetProgress)
             
-            let fileTypeStr = isPdfOrDoc ? "File" : "Image"
-            let fileTypeStrPlural = isPdfOrDoc ? "Files" : "Images"
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.allowsImplicitAnimation = true
+                self.progressIndicator.animator().doubleValue = targetProgress
+            }
             
-            if isDocumentComplete {
-                self.previewLabel.stringValue = "Connecto\nDownload Complete\n\(fileName)"
-                self.scheduleDismiss(delay: 3.0)
-            } else {
-                if isBatchedZip, let count = batchCount {
-                    self.previewLabel.stringValue = "Connecto\nReceiving \(count) \(fileTypeStrPlural)\n\(Int(progress * 100))%"
+            // Prevent text flickering
+            if currentInt != self.lastProgressValue {
+                self.lastProgressValue = currentInt
+                
+                self.titleLabel.stringValue = "Connecto"
+                self.titleLabel.textColor = .labelColor
+                
+                let isPdfOrDoc = fileName.lowercased().hasSuffix(".pdf") || fileName.lowercased().hasSuffix(".doc") || fileName.lowercased().hasSuffix(".docx") || fileName.lowercased().hasSuffix(".txt") || fileName.lowercased().hasSuffix(".xls") || fileName.lowercased().hasSuffix(".csv") || fileName.lowercased().hasSuffix(".mp4")
+                
+                let fileTypeStr = isPdfOrDoc ? "File" : "Image"
+                let fileTypeStrPlural = isPdfOrDoc ? "Files" : "Images"
+                
+                if isDocumentComplete {
+                    self.subtitleLabel.stringValue = "Download Complete"
+                    self.detailLabel.stringValue = fileName
+                    self.scheduleDismiss(delay: 3.0)
                 } else {
-                    self.previewLabel.stringValue = "Connecto\nReceiving \(fileTypeStr)\n\(fileName)"
+                    if isBatchedZip, let count = batchCount {
+                        self.subtitleLabel.stringValue = "Receiving \(count) \(fileTypeStrPlural)..."
+                        self.detailLabel.stringValue = "\(currentInt)%"
+                    } else {
+                        self.subtitleLabel.stringValue = "Receiving \(fileTypeStr)..."
+                        self.detailLabel.stringValue = fileName
+                    }
                 }
             }
 
@@ -99,7 +129,7 @@ class FileTransferPanelController {
             p.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
 
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.3
+                ctx.duration = 0.4
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 p.animator().alphaValue = 1.0
                 p.animator().setFrameOrigin(origin)
@@ -119,39 +149,40 @@ class FileTransferPanelController {
             self.copyButton.isHidden = false
             self.downloadButton.isHidden = false
             
+            self.lastProgressValue = -1 // Reset
+            
             let isPdfOrDoc = fileName.lowercased().hasSuffix(".pdf") || fileName.lowercased().hasSuffix(".doc") || fileName.lowercased().hasSuffix(".docx") || fileName.lowercased().hasSuffix(".txt") || fileName.lowercased().hasSuffix(".xls") || fileName.lowercased().hasSuffix(".csv") || fileName.lowercased().hasSuffix(".mp4")
             let fileTypeStr = isPdfOrDoc ? "File" : "Image"
             let fileTypeStrPlural = isPdfOrDoc ? "Files" : "Images"
             
             // Reset download button
             self.downloadButton.title = "Download"
-            self.downloadButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
+            self.downloadButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
             self.downloadButton.action = #selector(self.downloadClicked)
+            
+            self.titleLabel.stringValue = "Connecto"
+            self.titleLabel.textColor = .labelColor
+            self.subtitleLabel.stringValue = "✓ Transfer Complete"
             
             if isBatchedZip {
                 self.copyButton.isHidden = true
                 self.downloadButton.isHidden = false
-                self.downloadButton.frame = NSRect(x: 108, y: 14, width: 120, height: 26) // Centered and wider
-                self.previewLabel.stringValue = "Connecto\n\(filePaths.count) \(fileTypeStrPlural) Received"
+                self.downloadButton.frame = NSRect(x: 110, y: 16, width: 120, height: 28) // Centered
+                self.detailLabel.stringValue = "\(filePaths.count) \(fileTypeStrPlural) Received"
             } else if isPdfOrDoc {
                 self.copyButton.isHidden = true
                 self.downloadButton.isHidden = false
-                self.downloadButton.frame = NSRect(x: 108, y: 14, width: 120, height: 26) // Centered and wider
-                self.previewLabel.stringValue = "Connecto\n\(fileTypeStr) Received\n\(fileName)"
+                self.downloadButton.frame = NSRect(x: 110, y: 16, width: 120, height: 28) // Centered
+                self.detailLabel.stringValue = fileName
             } else {
                 self.copyButton.isHidden = false
                 self.downloadButton.isHidden = false
-                self.copyButton.frame = NSRect(x: 58, y: 14, width: 80, height: 26)
-                self.downloadButton.frame = NSRect(x: 58 + 80 + 10, y: 14, width: 80, height: 26)
-                self.previewLabel.stringValue = "Connecto\n\(fileTypeStr) Received\n\(fileName)"
+                self.copyButton.frame = NSRect(x: 60, y: 16, width: 105, height: 28)
+                self.downloadButton.frame = NSRect(x: 175, y: 16, width: 105, height: 28)
+                self.detailLabel.stringValue = fileName
             }
 
-            self.dismissWorkItem?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                self?.dismissPanel()
-            }
-            self.dismissWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 8.0, execute: work)
+            self.scheduleDismiss(delay: 10.0)
 
             guard let p = self.panel else { return }
             if p.isVisible { return }
@@ -164,10 +195,51 @@ class FileTransferPanelController {
             p.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
 
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.3
+                ctx.duration = 0.4
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 p.animator().alphaValue = 1.0
                 p.animator().setFrameOrigin(origin)
+            }
+        }
+    }
+    
+    // Future Error UI Implementation
+    func showError(reason: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.createPanelIfNeeded()
+            
+            self.progressIndicator.isHidden = true
+            self.copyButton.isHidden = true
+            self.downloadButton.isHidden = false
+            
+            self.downloadButton.title = "Dismiss"
+            self.downloadButton.layer?.backgroundColor = NSColor.systemRed.cgColor
+            self.downloadButton.action = #selector(self.dismissClicked)
+            self.downloadButton.frame = NSRect(x: 110, y: 16, width: 120, height: 28)
+            
+            self.titleLabel.stringValue = "Connecto"
+            self.subtitleLabel.stringValue = "Transfer Failed"
+            self.subtitleLabel.textColor = .systemRed
+            self.detailLabel.stringValue = reason
+            
+            self.scheduleDismiss(delay: 8.0)
+            
+            guard let p = self.panel else { return }
+            if !p.isVisible {
+                self.positionPanel()
+                p.alphaValue = 0.0
+                p.orderFrontRegardless()
+                
+                let origin = p.frame.origin
+                p.setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
+                
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.4
+                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    p.animator().alphaValue = 1.0
+                    p.animator().setFrameOrigin(origin)
+                }
             }
         }
     }
@@ -176,7 +248,7 @@ class FileTransferPanelController {
         if panel != nil { return }
 
         let width: CGFloat  = 340
-        let height: CGFloat = 110
+        let height: CGFloat = 130
         let rect = NSRect(x: 0, y: 0, width: width, height: height)
 
         let p = NSPanel(
@@ -190,37 +262,48 @@ class FileTransferPanelController {
         p.hidesOnDeactivate   = false
         p.isOpaque            = false
         p.backgroundColor     = .clear
-        p.hasShadow           = false
+        p.hasShadow           = true
 
         let visualEffect = NSVisualEffectView(frame: rect)
-        visualEffect.material       = .popover
+        visualEffect.material       = .hudWindow
         visualEffect.blendingMode   = .behindWindow
         visualEffect.state          = .active
         visualEffect.wantsLayer     = true
-        visualEffect.layer?.cornerRadius  = 16
+        visualEffect.layer?.cornerRadius  = 20
         visualEffect.layer?.masksToBounds = true
 
         if #available(macOS 11.0, *) {
             let iconImg   = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
-            let imageView = NSImageView(frame: NSRect(x: 16, y: 38, width: 32, height: 32))
+            let imageView = NSImageView(frame: NSRect(x: 20, y: height - 52, width: 32, height: 32))
             imageView.image        = iconImg
             imageView.imageScaling = .scaleProportionallyUpOrDown
             imageView.contentTintColor = .labelColor
             visualEffect.addSubview(imageView)
         }
 
-        previewLabel = NSTextField(labelWithString: "")
-        previewLabel.font      = NSFont.systemFont(ofSize: 12, weight: .regular)
-        previewLabel.textColor = .labelColor
-        previewLabel.frame     = NSRect(x: 58, y: 38, width: 260, height: 48)
-        previewLabel.maximumNumberOfLines = 3
-        previewLabel.lineBreakMode        = .byTruncatingTail
-        visualEffect.addSubview(previewLabel)
-        let btnWidth: CGFloat    = 80
-        let btnHeight: CGFloat   = 26
-        let margin: CGFloat      = 14
+        titleLabel = NSTextField(labelWithString: "Connecto")
+        titleLabel.font = NSFont.systemFont(ofSize: 14, weight: .bold)
+        titleLabel.textColor = .labelColor
+        titleLabel.frame = NSRect(x: 64, y: height - 34, width: 240, height: 18)
+        visualEffect.addSubview(titleLabel)
+
+        subtitleLabel = NSTextField(labelWithString: "")
+        subtitleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
+        subtitleLabel.textColor = .labelColor
+        subtitleLabel.frame = NSRect(x: 64, y: height - 56, width: 240, height: 18)
+        visualEffect.addSubview(subtitleLabel)
         
-        progressIndicator = NSProgressIndicator(frame: NSRect(x: 58, y: margin, width: 200, height: 26))
+        detailLabel = NSTextField(labelWithString: "")
+        detailLabel.font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.frame = NSRect(x: 64, y: height - 76, width: 240, height: 18)
+        detailLabel.lineBreakMode = .byTruncatingTail
+        visualEffect.addSubview(detailLabel)
+        
+        let btnHeight: CGFloat = 28
+        let margin: CGFloat = 16
+        
+        progressIndicator = NSProgressIndicator(frame: NSRect(x: 64, y: margin + 4, width: 240, height: 18))
         progressIndicator.style = .bar
         progressIndicator.isIndeterminate = false
         progressIndicator.minValue = 0.0
@@ -231,27 +314,25 @@ class FileTransferPanelController {
         copyButton = NSButton(title: "Copy", target: self, action: #selector(copyClicked))
         copyButton.isBordered   = false
         copyButton.wantsLayer   = true
-        copyButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
-        copyButton.layer?.cornerRadius    = 6
-        copyButton.font         = NSFont.systemFont(ofSize: 12, weight: .medium)
-        copyButton.contentTintColor = .white
-        copyButton.frame = NSRect(x: 58, y: margin, width: btnWidth, height: btnHeight)
+        copyButton.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.1).cgColor
+        copyButton.layer?.cornerRadius    = 8
+        copyButton.font         = NSFont.systemFont(ofSize: 13, weight: .medium)
+        copyButton.contentTintColor = .labelColor
         visualEffect.addSubview(copyButton)
 
         downloadButton = NSButton(title: "Download", target: self, action: #selector(downloadClicked))
         downloadButton.isBordered   = false
         downloadButton.wantsLayer   = true
-        downloadButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
-        downloadButton.layer?.cornerRadius    = 6
-        downloadButton.font         = NSFont.systemFont(ofSize: 12, weight: .medium)
+        downloadButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
+        downloadButton.layer?.cornerRadius    = 8
+        downloadButton.font         = NSFont.systemFont(ofSize: 13, weight: .medium)
         downloadButton.contentTintColor = .white
-        downloadButton.frame = NSRect(x: 58 + btnWidth + 10, y: margin, width: btnWidth, height: btnHeight)
         visualEffect.addSubview(downloadButton)
         
         dismissButton = NSButton(title: "✕", target: self, action: #selector(dismissClicked))
         dismissButton.isBordered   = false
         dismissButton.wantsLayer   = true
-        dismissButton.font         = NSFont.systemFont(ofSize: 14, weight: .bold)
+        dismissButton.font         = NSFont.systemFont(ofSize: 12, weight: .bold)
         dismissButton.contentTintColor = .secondaryLabelColor
         dismissButton.frame = NSRect(x: width - 30, y: height - 30, width: 20, height: 20)
         visualEffect.addSubview(dismissButton)
@@ -263,7 +344,7 @@ class FileTransferPanelController {
     private func positionPanel() {
         guard let p = panel, let screen = NSScreen.main else { return }
         let sr = screen.visibleFrame
-        let padding: CGFloat = 20
+        let padding: CGFloat = 24
         p.setFrameOrigin(NSPoint(
             x: sr.maxX - p.frame.width - padding,
             y: sr.maxY - p.frame.height - padding
@@ -271,15 +352,10 @@ class FileTransferPanelController {
     }
 
     @objc private func copyClicked() {
-        print("[PHASE7] COPY BUTTON CLICKED")
-        guard let paths = currentFilePaths, !paths.isEmpty else {
-            print("[PHASE7] ERROR: No file paths to copy")
-            return
-        }
+        self.dismissWorkItem?.cancel() // Prevent dismiss while interacting
         
-        if paths.count > 1 {
-            print("[PHASE8] COPY BATCH CLICKED")
-            print("[PHASE8] COPYING FILES:\n\(paths.count)")
+        guard let paths = currentFilePaths, !paths.isEmpty else {
+            return
         }
         
         let pasteboard = NSPasteboard.general
@@ -300,19 +376,18 @@ class FileTransferPanelController {
             pasteboard.writeObjects(images)
         }
         
-        print("[PHASE7] \(paths.count) FILES COPIED TO CLIPBOARD (\(images.count) IMAGES)")
-        
-        if paths.count > 1 {
-            print("[PHASE8] IMAGES COPIED")
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            self.copyButton.animator().title = "✓ Copied"
+            self.copyButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
+            self.copyButton.contentTintColor = .white
         }
         
-        copyButton.title = "Copied"
-        copyButton.layer?.backgroundColor = NSColor.systemTeal.cgColor
-        
-        scheduleDismiss(delay: 1.2)
+        scheduleDismiss(delay: 2.0)
     }
 
     @objc private func downloadClicked() {
+        self.dismissWorkItem?.cancel() // Pause dismiss
         print("[PHASE7] DOWNLOAD BUTTON CLICKED")
         
         if let paths = currentFilePaths, !paths.isEmpty {
@@ -348,33 +423,46 @@ class FileTransferPanelController {
                 
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    self.downloadButton.title = "Open"
-                    self.downloadButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
-                    self.downloadButton.action = #selector(self.openClicked)
-                    self.scheduleDismiss(delay: 5.0)
+                    
+                    // State 1: ✓ Saved
+                    NSAnimationContext.runAnimationGroup { ctx in
+                        ctx.duration = 0.2
+                        self.downloadButton.animator().title = "✓ Saved"
+                        self.downloadButton.layer?.backgroundColor = NSColor.systemGreen.cgColor
+                    }
+                    
+                    // State 2: Open Folder
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        if let panel = self.panel, panel.isVisible {
+                            NSAnimationContext.runAnimationGroup { ctx in
+                                ctx.duration = 0.2
+                                self.downloadButton.animator().title = "Open Folder"
+                                self.downloadButton.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.15).cgColor
+                                self.downloadButton.contentTintColor = .labelColor
+                            }
+                            self.downloadButton.action = #selector(self.openClicked)
+                            self.scheduleDismiss(delay: 5.0)
+                        }
+                    }
                 }
-                
-                print("[PHASE7] DOWNLOADED \(finalUrls.count) FILES TO CONNECTO FOLDER")
                 
             } catch {
                 print("[PHASE8] ERROR SAVING FILES: \(error)")
-                scheduleDismiss(delay: 0.5)
+                self.scheduleDismiss(delay: 2.0)
             }
         } else {
-            scheduleDismiss(delay: 0.5)
+            scheduleDismiss(delay: 1.0)
         }
     }
     
     @objc private func openClicked() {
-        print("[PHASE8] OPEN BUTTON CLICKED")
+        self.dismissWorkItem?.cancel()
         if let urls = downloadedUrls {
             if urls.count > 1 {
-                // If it's a batch, just open the Connecto folder
                 if let first = urls.first {
                     NSWorkspace.shared.activateFileViewerSelecting([first.deletingLastPathComponent()])
                 }
             } else if let first = urls.first {
-                // Open the actual file
                 NSWorkspace.shared.open(first)
             }
         }
@@ -399,8 +487,8 @@ class FileTransferPanelController {
         DispatchQueue.main.async { [weak self] in
             guard let self, let p = self.panel, p.isVisible else { return }
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.2
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                ctx.duration = 0.35 // Slower, smoother fade
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 p.animator().alphaValue = 0.0
                 let origin = p.frame.origin
                 p.animator().setFrameOrigin(NSPoint(x: origin.x, y: origin.y + 10))
@@ -408,8 +496,15 @@ class FileTransferPanelController {
                 p.orderOut(nil)
                 self.currentFilePaths = nil
                 self.currentFileName = nil
+                
+                // Reset button appearances
                 self.copyButton.title = "Copy"
-                self.copyButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
+                self.copyButton.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.1).cgColor
+                self.copyButton.contentTintColor = .labelColor
+                
+                self.downloadButton.title = "Download"
+                self.downloadButton.layer?.backgroundColor = NSColor.systemBlue.cgColor
+                self.downloadButton.contentTintColor = .white
             })
         }
     }
