@@ -10,39 +10,71 @@ import '../models/file_transfer_protocol.dart';
 import '../models/file_transfer_session.dart';
 import '../utils/filename_sanitizer.dart';
 
+import 'package:path/path.dart' as p;
+
 Future<List<String>> _extractZipIsolate(Map<String, dynamic> params) async {
   final String zipPath = params['zipPath'];
   final String tempDirPath = params['tempDirPath'];
 
-  final bytes = File(zipPath).readAsBytesSync();
-  final archive = ZipDecoder().decodeBytes(bytes);
+  final inputStream = InputFileStream(zipPath);
+  final archive = ZipDecoder().decodeStream(inputStream);
   
   List<String> extractedPaths = [];
+  final String canonicalTempDir = p.canonicalize(tempDirPath);
+  
+  int entryCount = 0;
+  int totalUncompressedSize = 0;
+  const int maxEntries = 10000;
+  const int maxTotalUncompressedSize = 2 * 1024 * 1024 * 1024; // 2 GB
   
   for (final file in archive) {
-      final filename = file.name;
+      entryCount++;
+      if (entryCount > maxEntries) {
+          inputStream.close();
+          throw Exception("ZIP archive exceeded maximum allowed entries.");
+      }
+      
       if (file.isFile) {
-          final data = file.content as List<int>;
+          if (file.isSymbolicLink) {
+              print('[PHASE11B] Rejected symbolic link ZIP entry: ${file.name}');
+              continue;
+          }
           
-          String outName = filename;
-          File outFile = File('$tempDirPath/$outName');
+          final candidatePath = p.canonicalize(p.join(tempDirPath, file.name));
+          if (!p.isWithin(canonicalTempDir, candidatePath)) {
+              print('[PHASE11B] Rejected malicious/invalid ZIP entry: ${file.name}');
+              continue;
+          }
+          
+          if (file.size < 0) continue;
+          totalUncompressedSize += file.size as int;
+          if (totalUncompressedSize > maxTotalUncompressedSize) {
+              inputStream.close();
+              throw Exception("ZIP archive exceeded maximum allowed uncompressed size.");
+          }
+          
+          File outFile = File(candidatePath);
           int outCounter = 2;
+          String baseName = p.basenameWithoutExtension(outFile.path);
+          String ext = p.extension(outFile.path);
+          String dir = outFile.parent.path;
+          
           while (outFile.existsSync()) {
-              final lastDot = filename.lastIndexOf('.');
-              if (lastDot > 0) {
-                  outName = '${filename.substring(0, lastDot)}_$outCounter${filename.substring(lastDot)}';
-              } else {
-                  outName = '${filename}_$outCounter';
-              }
-              outFile = File('$tempDirPath/$outName');
+              outFile = File(p.join(dir, '${baseName}_$outCounter$ext'));
               outCounter++;
           }
           
-          outFile.writeAsBytesSync(data);
+          outFile.parent.createSync(recursive: true);
+          
+          final outputStream = OutputFileStream(outFile.path);
+          file.writeContent(outputStream);
+          outputStream.close();
+          
           extractedPaths.add(outFile.path);
       }
   }
   
+  inputStream.close();
   return extractedPaths;
 }
 

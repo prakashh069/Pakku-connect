@@ -426,6 +426,12 @@ class FileTransferPanelController {
                 
                 if fileManager.fileExists(atPath: sourceUrl.path) {
                     try fileManager.moveItem(at: sourceUrl, to: destUrl)
+                    
+                    let quarantineString = "0081;\(String(format: "%08x", Int(Date().timeIntervalSince1970)));Connecto;"
+                    if let quarantineData = quarantineString.data(using: .utf8) {
+                        setxattr(destUrl.path, "com.apple.quarantine", (quarantineData as NSData).bytes, quarantineData.count, 0, 0)
+                    }
+                    
                     finalUrls.append(destUrl)
                 }
             }
@@ -491,7 +497,14 @@ class FileTransferPanelController {
                     NSWorkspace.shared.activateFileViewerSelecting([first.deletingLastPathComponent()])
                 }
             } else if let first = urls.first {
-                NSWorkspace.shared.open(first)
+                let ext = first.pathExtension.lowercased()
+                let executableExts = ["app", "command", "sh", "zsh", "bash", "pkg", "dmg", "scpt", "applescript", "py", "pl", "rb", "jar", "exe", "bat"]
+                
+                if executableExts.contains(ext) {
+                    NSWorkspace.shared.activateFileViewerSelecting([first])
+                } else {
+                    NSWorkspace.shared.open(first)
+                }
             }
         }
         dismissPanel()

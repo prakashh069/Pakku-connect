@@ -132,7 +132,7 @@ class RelayServer {
     }
 
     ws.listen((data) {
-      print('RelayServer: [TRACE] Received data: $data');
+      print('RelayServer: [TRACE] Received WebSocket data');
       try {
         if (data is! String) {
           print('RelayServer: [TRACE] Error: not a string');
