@@ -19,6 +19,7 @@ import '../../features/notifications/services/notification_manager.dart';
 import '../../features/calling/services/call_manager.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
 import '../app/app_bootstrap_service.dart';
+import '../app/app_initialization_coordinator.dart';
 
 class AppProviders extends StatelessWidget {
   final Widget child;
@@ -109,6 +110,16 @@ class AppProviders extends StatelessWidget {
             ctx.read<ShareManager>(),
           )..initialize(),
           dispose: (_, svc) => svc.dispose(),
+        ),
+        ChangeNotifierProvider<AppInitializationCoordinator>(
+          lazy: false,
+          create: (ctx) => AppInitializationCoordinator(
+            ctx.read<DeviceAuthManager>(),
+            ctx.read<AppConnectionManager>(),
+            ctx.read<WebSocketService>(),
+            ctx.read<PlatformIntegrationService>(),
+            ctx.read<PlatformTransport>(),
+          )..initialize(),
         ),
       ],
       child: child,
