@@ -3,12 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connecto/features/clipboard/services/clipboard_sync_manager.dart';
-import 'package:connecto/core/services/platform_transport.dart';
+import 'package:connecto/core/messaging/app_message_bus.dart';
+import 'package:connecto/core/interfaces/device_transport.dart';
 import 'package:connecto/core/constants/message_types.dart';
 import 'package:connecto/features/share/constants/share_constants.dart';
 import 'package:connecto/features/share/models/share_event.dart';
 
-class FakeTransport implements PlatformTransport {
+class FakeTransport implements DeviceTransport {
   final StreamController<Map<String, dynamic>> _controller = StreamController.broadcast();
   final List<Map<String, dynamic>> sentMessages = [];
 
@@ -28,6 +29,9 @@ class FakeTransport implements PlatformTransport {
   void dispose() {
     _controller.close();
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
@@ -35,6 +39,7 @@ void main() {
 
   group('ClipboardSyncManager', () {
     late FakeTransport transport;
+    late AppMessageBus bus;
     late ClipboardSyncManager manager;
 
     setUp(() async {
@@ -72,9 +77,11 @@ void main() {
       );
 
       transport = FakeTransport();
+      bus = AppMessageBus(deviceTransport: transport);
     });
 
     tearDown(() {
+      bus.dispose();
       manager.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(const MethodChannel('com.pakku.connect/platform'), null);
@@ -85,14 +92,14 @@ void main() {
     });
 
     test('initializes and respects shared preferences', () async {
-      manager = ClipboardSyncManager(transport);
+      manager = ClipboardSyncManager(messageBus: bus);
       // Let async init complete
       await Future.delayed(Duration.zero);
       expect(manager.enabled, isTrue);
     });
 
     test('emits valid inbound text share correctly', () async {
-      manager = ClipboardSyncManager(transport);
+      manager = ClipboardSyncManager(messageBus: bus);
       await Future.delayed(Duration.zero);
 
       ShareEvent? receivedEvent;
@@ -124,7 +131,7 @@ void main() {
     });
 
     test('drops inbound share if schemaVersion is incorrect', () async {
-      manager = ClipboardSyncManager(transport);
+      manager = ClipboardSyncManager(messageBus: bus);
       await Future.delayed(Duration.zero);
 
       ShareEvent? receivedEvent;
@@ -144,7 +151,7 @@ void main() {
     });
 
     test('drops inbound text payload if size exceeds limit', () async {
-      manager = ClipboardSyncManager(transport);
+      manager = ClipboardSyncManager(messageBus: bus);
       await Future.delayed(Duration.zero);
 
       ShareEvent? receivedEvent;
@@ -169,7 +176,7 @@ void main() {
     });
     
     test('deduplicates based on ID', () async {
-      manager = ClipboardSyncManager(transport);
+      manager = ClipboardSyncManager(messageBus: bus);
       await Future.delayed(Duration.zero);
 
       int receiveCount = 0;

@@ -82,6 +82,7 @@ class FileReceiver {
   final Function(String title, String body, {String? filePath, String? fileName, String? mimeType, bool? isImage}) showNotification;
   final void Function(String transferId, {FileTransferSession? session, List<String>? filePaths, String? folderPath}) onFinished;
   final void Function(String transferId, double progress) onProgress;
+  final void Function(String transferId, String reason) onError;
 
   FileTransferSession? _session;
   File? _tempFile;
@@ -89,7 +90,7 @@ class FileReceiver {
   Timer? _chunkTimer;
   Timer? _globalTimer;
 
-  static const _chunkTimeout = Duration(seconds: 30);
+  static const _chunkTimeout = Duration(minutes: 5);
   static const _globalTimeout = Duration(minutes: 10);
 
   double _lastReportedProgress = 0.0;
@@ -99,6 +100,7 @@ class FileReceiver {
     required this.showNotification,
     required this.onFinished,
     required this.onProgress,
+    required this.onError,
   });
 
   bool get isActive => _session != null && !_session!.isFinished;
@@ -142,6 +144,8 @@ class FileReceiver {
       batchTotal: start.batchTotal,
       isBatchedZip: start.isBatchedZip,
     );
+    
+    debugPrint('[ConnectoShare] [TRANSFER_START] transferId=${start.transferId} filename=${start.name} size=${start.size} mimeType=${start.mime}');
 
     try {
       final tempDir = Directory('${Directory.systemTemp.path}/connecto_transfers/${start.transferId}');
@@ -154,6 +158,7 @@ class FileReceiver {
 
       _session!.state = FileTransferState.readyReceived;
       
+      debugPrint('[ConnectoShare] [TRANSFER_READY] transferId=${start.transferId}');
       sendMessage(FileTransferReady(transferId: start.transferId).toJson());
 
       _lastReportedProgress = 0.0;
@@ -198,6 +203,9 @@ class FileReceiver {
           onProgress(_session!.transferId, newProgress);
       }
 
+      _resetTimers(); // Reset timer after successfully processing a chunk
+
+      debugPrint('[ConnectoShare] [CHUNK_ACK_RECEIVED] transferId=${chunk.transferId} chunkIndex=${chunk.chunkIndex}');
       sendMessage(FileTransferChunkAck(
         transferId: chunk.transferId,
         chunkIndex: chunk.chunkIndex,
@@ -206,7 +214,8 @@ class FileReceiver {
       if (_session!.receivedChunks == _session!.totalChunks) {
         await _finishTransfer();
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[FileReceiver] handleChunk error: $e\n$st');
       _handleError(FileTransferErrorReasons.writeFailure);
     }
   }
@@ -250,6 +259,7 @@ class FileReceiver {
       final tempDir = Directory('${Directory.systemTemp.path}/connecto_transfers/${_session!.transferId}');
       
       _session!.state = FileTransferState.completed;
+      debugPrint('[ConnectoShare] [TRANSFER_COMPLETE] transferId=${_session!.transferId}');
       sendMessage(FileTransferComplete(
         transferId: _session!.transferId,
         sha256Match: true,
@@ -283,12 +293,15 @@ class FileReceiver {
   }
 
   void _handleError(String reason) {
-    if (_session == null) return;
-    _session!.state = FileTransferState.failed;
-    sendMessage(FileTransferError(
-      transferId: _session!.transferId,
-      reason: reason,
-    ).toJson());
+    debugPrint('[ConnectoShare] [TRANSFER_FAILED] transferId=${_session?.transferId} reason=$reason');
+    if (_session != null) {
+      _session!.state = FileTransferState.failed;
+      sendMessage(FileTransferError(
+        transferId: _session!.transferId,
+        reason: reason,
+      ).toJson());
+      onError(_session!.transferId, reason);
+    }
     _cleanup();
   }
 

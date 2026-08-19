@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/message_types.dart';
-import '../../../core/services/platform_transport.dart';
+import '../../../core/messaging/message_bus.dart';
+import '../../../core/messaging/message_types.dart';
 import '../../share/constants/share_constants.dart';
 import '../../share/models/share_content.dart';
 import '../../share/models/share_event.dart';
@@ -37,9 +38,11 @@ const int _kMaxClipboardBytes = 64000;
 /// The [ClipboardShareCoordinator] subscribes to [inboundShares] to
 /// dispatch events to the appropriate [ShareHandler].
 class ClipboardSyncManager extends ChangeNotifier {
-  final PlatformTransport _transport;
+  final MessageBus? _messageBus;
   late final ClipboardWatcher _watcher;
-  StreamSubscription<Map<String, dynamic>>? _transportSubscription;
+  StreamSubscription? _transportSubscription;
+
+
 
   final StreamController<ShareEvent> _inboundController =
       StreamController.broadcast();
@@ -59,10 +62,14 @@ class ClipboardSyncManager extends ChangeNotifier {
   /// Device name read once at init and sent with every outbound message.
   String _deviceName = 'Android';
 
-  ClipboardSyncManager(this._transport) {
+  ClipboardSyncManager({MessageBus? messageBus}) : _messageBus = messageBus {
     debugPrint('ClipboardSyncManager created');
     _watcher = ClipboardWatcher(onClipboardChanged: _onLocalClipboardChanged);
     _init();
+  }
+
+  void _send(Map<String, dynamic> message) {
+    _messageBus?.send(message, route: MessageRoute.broadcast);
   }
 
   Future<void> _init() async {
@@ -75,7 +82,7 @@ class ClipboardSyncManager extends ChangeNotifier {
       _deviceName = 'Mac';
     }
 
-    _transportSubscription = _transport.messages.listen(_onTransportMessage);
+    _transportSubscription = _messageBus?.messagesOfType(BusMessagePrefixes.share).listen(_handleInboundMessage);
 
     if (_enabled) {
       _watcher.start();
@@ -169,7 +176,7 @@ class ClipboardSyncManager extends ChangeNotifier {
     }
 
 
-    _transport.send({
+    _send({
       'schemaVersion': 1,
       'type': MessageTypes.shareClipboard,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
@@ -186,12 +193,14 @@ class ClipboardSyncManager extends ChangeNotifier {
   // Inbound (macOS receiving share.clipboard)
   // ---------------------------------------------------------------------------
 
-  void _onTransportMessage(Map<String, dynamic> data) {
+  void _handleInboundMessage(dynamic busMsg) async {
+    final msg = busMsg.raw;
     if (!_enabled) return;
 
     // Failure contract: malformed or unsupported messages are dropped silently.
     // Never reconnect, retry, disconnect, throw, or crash.
     try {
+      final data = msg as Map<String, dynamic>;
       final type = data['type'];
       if (type != MessageTypes.shareClipboard) return;
 

@@ -73,5 +73,31 @@ void main() {
       
       bus.dispose();
     });
+
+    test('File transfer ACK ordering is preserved', () async {
+      final transport = MockTransport();
+      final bus = AppMessageBus(deviceTransport: transport, dedupTtl: const Duration(seconds: 5));
+      
+      final receivedIndices = <int>[];
+      bus.messagesOfType('file.transfer.chunk_ack').listen((msg) {
+        receivedIndices.add(msg.payload['chunkIndex'] as int);
+      });
+
+      // Inject ACKs in a specific order
+      final testOrder = [0, 1, 2, 4, 3, 5];
+      for (final index in testOrder) {
+        transport.injectMessage({
+          'type': 'file.transfer.chunk_ack',
+          'transferId': 'transferB',
+          'chunkIndex': index,
+        });
+      }
+
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      expect(receivedIndices, equals(testOrder), reason: 'ACK ordering should perfectly match the received injection order');
+      
+      bus.dispose();
+    });
   });
 }
