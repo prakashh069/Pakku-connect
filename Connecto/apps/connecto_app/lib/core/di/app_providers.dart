@@ -19,7 +19,6 @@ import '../../features/notifications/services/notification_manager.dart';
 import '../../features/calling/services/call_manager.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
 import '../app/app_bootstrap_service.dart';
-WebSocketService? _wsService;
 
 class AppProviders extends StatelessWidget {
   final Widget child;
@@ -33,10 +32,7 @@ class AppProviders extends StatelessWidget {
           create: (_) => DeviceAuthManager(),
         ),
         Provider<WebSocketService>(
-          create: (_) {
-            _wsService = WebSocketService();
-            return _wsService!;
-          },
+          create: (_) => WebSocketService(),
         ),
         Provider<RelayManager>(
           lazy: false,
