@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import '../interfaces/platform_integration.dart';
 
-class PlatformIntegrationService {
+class PlatformIntegrationService implements PlatformIntegration {
   Future<void> startAndroidPhoneStateService() async {
     if (!Platform.isAndroid) return;
     

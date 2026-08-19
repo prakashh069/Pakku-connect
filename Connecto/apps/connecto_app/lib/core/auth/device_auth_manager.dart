@@ -2,8 +2,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../interfaces/auth_manager.dart';
 
-class DeviceAuthManager {
+class DeviceAuthManager implements AuthManager {
   Future<bool> isPaired() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('paired') ?? false;

@@ -2,48 +2,21 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../auth/device_auth_manager.dart';
-import '../connection/app_connection_manager.dart';
-import '../platform/platform_integration_service.dart';
+import '../interfaces/auth_manager.dart';
+import '../interfaces/connection_manager.dart';
+import '../interfaces/platform_integration.dart';
+import '../interfaces/startup_coordinator.dart';
 import '../services/websocket_service.dart';
 import '../services/platform_transport.dart';
 import '../constants/app_constants.dart';
 import '../../features/auth/services/pairing_service.dart';
 import '../navigation/navigation_service.dart';
 
-class StartupState {
-  final bool isLoading;
-  final bool isPaired;
-  final bool hasSeenOnboarding;
-  final DeviceSessionState sessionState;
-
-  StartupState({
-    this.isLoading = true,
-    this.isPaired = false,
-    this.hasSeenOnboarding = false,
-    this.sessionState = DeviceSessionState.disconnected,
-  });
-
-  StartupState copyWith({
-    bool? isLoading,
-    bool? isPaired,
-    bool? hasSeenOnboarding,
-    DeviceSessionState? sessionState,
-  }) {
-    return StartupState(
-      isLoading: isLoading ?? this.isLoading,
-      isPaired: isPaired ?? this.isPaired,
-      hasSeenOnboarding: hasSeenOnboarding ?? this.hasSeenOnboarding,
-      sessionState: sessionState ?? this.sessionState,
-    );
-  }
-}
-
-class AppInitializationCoordinator extends ChangeNotifier {
-  final DeviceAuthManager _authManager;
-  final AppConnectionManager _connectionManager;
+class AppInitializationCoordinator extends ChangeNotifier implements StartupCoordinator {
+  final AuthManager _authManager;
+  final ConnectionManager _connectionManager;
   final WebSocketService _ws;
-  final PlatformIntegrationService _platformService;
+  final PlatformIntegration _platformService;
   final PlatformTransport _transport;
 
   StartupState _state = StartupState();

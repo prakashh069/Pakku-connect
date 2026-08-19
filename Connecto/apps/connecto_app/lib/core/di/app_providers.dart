@@ -20,6 +20,10 @@ import '../../features/calling/services/call_manager.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
 import '../app/app_bootstrap_service.dart';
 import '../app/app_initialization_coordinator.dart';
+import '../interfaces/auth_manager.dart';
+import '../interfaces/connection_manager.dart';
+import '../interfaces/platform_integration.dart';
+import '../interfaces/startup_coordinator.dart';
 
 class AppProviders extends StatelessWidget {
   final Widget child;
@@ -29,7 +33,7 @@ class AppProviders extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<DeviceAuthManager>(
+        Provider<AuthManager>(
           create: (_) => DeviceAuthManager(),
         ),
         Provider<WebSocketService>(
@@ -40,13 +44,13 @@ class AppProviders extends StatelessWidget {
           create: (_) => RelayManager(),
           dispose: (_, rm) => rm.stop(),
         ),
-        Provider<AppConnectionManager>(
+        Provider<ConnectionManager>(
           create: (ctx) => AppConnectionManager(
             ctx.read<WebSocketService>(),
             ctx.read<RelayManager>(),
           ),
         ),
-        Provider<PlatformIntegrationService>(
+        Provider<PlatformIntegration>(
           create: (_) => PlatformIntegrationService(),
         ),
         Provider(
@@ -111,13 +115,13 @@ class AppProviders extends StatelessWidget {
           )..initialize(),
           dispose: (_, svc) => svc.dispose(),
         ),
-        ChangeNotifierProvider<AppInitializationCoordinator>(
+        ChangeNotifierProvider<StartupCoordinator>(
           lazy: false,
           create: (ctx) => AppInitializationCoordinator(
-            ctx.read<DeviceAuthManager>(),
-            ctx.read<AppConnectionManager>(),
+            ctx.read<AuthManager>(),
+            ctx.read<ConnectionManager>(),
             ctx.read<WebSocketService>(),
-            ctx.read<PlatformIntegrationService>(),
+            ctx.read<PlatformIntegration>(),
             ctx.read<PlatformTransport>(),
           )..initialize(),
         ),

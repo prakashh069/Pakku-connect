@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../app/app_initialization_coordinator.dart';
+import '../interfaces/startup_coordinator.dart';
 import '../pairing/device_pairing_coordinator.dart';
 import '../../features/onboarding/screens/onboarding_screen.dart';
 import '../../features/home/screens/home_screen.dart';
@@ -11,7 +11,7 @@ class RootRouter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final coordinator = context.watch<AppInitializationCoordinator>();
+    final coordinator = context.watch<StartupCoordinator>();
     final state = coordinator.state;
 
     if (state.isLoading) {
