@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'features/dashboard/screens/dashboard_screen.dart';
 import 'features/home/widgets/android_unified_home.dart';
 import 'features/settings/screens/settings_screen.dart';
 import 'features/settings/services/settings_service.dart';
@@ -31,6 +30,7 @@ import 'core/services/window_visibility_service.dart';
 import 'core/services/platform_transport.dart';
 import 'core/services/crypto_service.dart';
 import 'features/notifications/services/notification_manager.dart';
+import 'features/home/widgets/macos_quick_actions.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 WebSocketService? _wsService;
@@ -632,7 +632,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 32),
           Text('Quick Actions', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colors.lightText)),
           const SizedBox(height: 12),
-          _buildQuickActions(colors, ws),
+          MacOsQuickActions(colors: colors, ws: ws, flashlightOn: _flashlightOn, isRinging: _isRinging),
           const SizedBox(height: 32),
           _buildMacStatusRow('Contacts', '$contactCount', colors),
         ],
@@ -690,97 +690,6 @@ class _HomeScreenState extends State<HomeScreen> {
               size: 20,
               color: isSelected ? Colors.white : colors.lightText.withAlpha(120),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickActions(CustomColors colors, WebSocketService ws) {
-    return Column(
-      children: [
-        _buildActionTile(
-          icon: Icons.flashlight_on,
-          title: 'Flashlight',
-          isActive: _flashlightOn,
-          colors: colors,
-          onTap: () {
-            ws.sendDeviceAction('flashlight', enabled: !_flashlightOn);
-          },
-        ),
-        _buildActionTile(
-          icon: Icons.notifications_active,
-          title: 'Ring Phone',
-          isActive: _isRinging,
-          colors: colors,
-          onTap: () {
-            ws.sendDeviceAction('ring', enabled: !_isRinging);
-          },
-        ),
-        _buildActionTile(
-          icon: Icons.lock_outline,
-          title: 'Lock',
-          isActive: false,
-          colors: colors,
-          onTap: () => ws.sendDeviceAction('lock'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionTile({
-    required IconData icon,
-    required String title,
-    required bool isActive,
-    required CustomColors colors,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          height: 56,
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: colors.surface2,
-            border: Border.all(
-              color: isActive ? colors.accent.withAlpha(150) : colors.border,
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: isActive
-                ? [
-                    BoxShadow(
-                      color: colors.accent.withAlpha(50),
-                      blurRadius: 12,
-                      spreadRadius: 1,
-                    )
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 22, color: isActive ? colors.accent : colors.lightText),
-              const SizedBox(width: 12),
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    style: TextStyle(
-                      color: isActive ? colors.accent : colors.lightText,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),
