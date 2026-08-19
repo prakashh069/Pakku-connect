@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../features/auth/screens/qr_pairing_screen.dart';
-import '../../features/auth/screens/scan_screen.dart';
+import '../pairing/device_pairing_coordinator.dart';
 import '../../features/onboarding/screens/onboarding_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
@@ -193,18 +192,10 @@ class _RootRouterState extends State<RootRouter> {
       return const OnboardingScreen();
     }
 
-    if (Platform.isMacOS) {
-      if (!_isPaired) {
-        return const QrPairingScreen();
-      } else {
-        return HomeScreen(sessionState: _sessionState);
-      }
+    if (!_isPaired) {
+      return const DevicePairingCoordinator();
     }
     
-    if (!_isPaired) {
-      return const ScanScreen();
-    } else {
-      return HomeScreen(sessionState: _sessionState);
-    }
+    return HomeScreen(sessionState: _sessionState);
   }
 }
