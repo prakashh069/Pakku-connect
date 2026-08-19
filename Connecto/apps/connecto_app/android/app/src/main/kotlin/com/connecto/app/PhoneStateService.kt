@@ -387,7 +387,7 @@ class PhoneStateService : Service() {
                     androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
                 )
-                hmacSecret = securePrefs.getString("VGhpc0lzVGhlUHJlZml4hmacSecret", "") ?: ""
+                hmacSecret = securePrefs.getString("VGhpc0lzVGhlUHJlZml4hmacSecret", "")?.removeSurrounding("\"")?.trim() ?: ""
             } catch (e: Exception) {
                 android.util.Log.e("PhoneStateService", "Failed to read EncryptedSharedPreferences for hmacSecret: ${e.message}")
             }
@@ -713,10 +713,28 @@ class PhoneStateService : Service() {
                             }
                         }
                         else -> {
-                            val broadcastIntent = Intent("com.connecto.app.WS_MESSAGE")
-                            broadcastIntent.setPackage(packageName)
-                            broadcastIntent.putExtra("payload", text)
-                            sendBroadcast(broadcastIntent)
+                            if (msgType.startsWith("file.transfer.")) {
+                                Log.d(TAG, "[FT_BROADCAST_SENT] $text")
+                                val broadcastIntent = Intent("com.connecto.app.FT_MESSAGE")
+                                broadcastIntent.setPackage(packageName)
+                                broadcastIntent.putExtra("secure_token", "INTERNAL_FT_SECURE_TOKEN")
+                                broadcastIntent.putExtra("payload", text)
+                                sendBroadcast(broadcastIntent)
+                            }
+                            // Only allowlist specific domain events for generic WS_MESSAGE broadcast.
+                            else if (msgType.startsWith("call.") || 
+                                msgType.startsWith("device.") || 
+                                msgType.startsWith("battery.") || 
+                                msgType.startsWith("status.") ||
+                                msgType.startsWith("notification.")) {
+                                
+                                val broadcastIntent = Intent("com.connecto.app.WS_MESSAGE")
+                                broadcastIntent.setPackage(packageName)
+                                broadcastIntent.putExtra("payload", text)
+                                sendBroadcast(broadcastIntent)
+                            } else {
+                                Log.d(TAG, "Silently dropping protocol/unrecognized message ($msgType) from WS_MESSAGE broadcast")
+                            }
                         }
                     }
                 } catch (e: Exception) {

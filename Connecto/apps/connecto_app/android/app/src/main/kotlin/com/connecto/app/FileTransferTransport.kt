@@ -12,8 +12,15 @@ class FileTransferTransport(private val context: Context) {
 
     private val wsMessageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            val token = intent.getStringExtra("secure_token")
+            if (token != "INTERNAL_FT_SECURE_TOKEN") {
+                android.util.Log.w("FileTransfer", "[FT_TRANSPORT] Dropped spoofed broadcast")
+                return
+            }
+
             val payload = intent.getStringExtra("payload")
             if (payload != null) {
+                android.util.Log.d("FileTransfer", "[FT_BROADCAST_RECEIVED] payload=$payload")
                 try {
                     val json = JSONObject(payload)
                     val type = json.optString("type")
@@ -29,9 +36,9 @@ class FileTransferTransport(private val context: Context) {
 
     fun startListening(listener: (JSONObject) -> Unit) {
         messageListener = listener
-        val filter = IntentFilter("com.connecto.app.WS_MESSAGE")
+        val filter = IntentFilter("com.connecto.app.FT_MESSAGE")
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(wsMessageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            context.registerReceiver(wsMessageReceiver, filter, Context.RECEIVER_EXPORTED)
         } else {
             context.registerReceiver(wsMessageReceiver, filter)
         }

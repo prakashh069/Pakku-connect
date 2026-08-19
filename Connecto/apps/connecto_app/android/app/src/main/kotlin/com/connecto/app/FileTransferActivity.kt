@@ -66,10 +66,21 @@ class FileTransferActivity : Activity() {
         } else if (Intent.ACTION_SEND_MULTIPLE == action && type != null) {
             @Suppress("DEPRECATION")
             val uris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
-            
+
+            // --- [SHARE_RECEIVED] Debug Log ---
+            val fileNames = uris?.mapNotNull { uri ->
+                try { contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(c.getColumnIndexOrThrow(android.provider.OpenableColumns.DISPLAY_NAME)) else null
+                }} catch (e: Exception) { uri.lastPathSegment }
+            }
+            Log.d("ConnectoShare", "[SHARE_RECEIVED] action=ACTION_SEND_MULTIPLE type=$type")
+            Log.d("ConnectoShare", "[SHARE_RECEIVED] file_count=${uris?.size ?: 0}")
+            Log.d("ConnectoShare", "[SHARE_RECEIVED] file_names=${fileNames?.joinToString(", ")}")
+            // ----------------------------------
+
             Log.d("FileTransfer", "[PHASE8] SEND MULTIPLE RECEIVED")
             Log.d("FileTransfer", "[PHASE8] IMAGE COUNT: ${uris?.size}")
-            
+
             if (uris != null && uris.isNotEmpty()) {
                 Log.d("FileTransfer", "[PHASE8] ZIP CREATION START")
                 TransferQueueManager.startQueue(this, uris, type)

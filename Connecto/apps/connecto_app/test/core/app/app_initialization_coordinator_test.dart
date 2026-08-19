@@ -6,8 +6,9 @@ import 'package:connecto/core/app/app_initialization_coordinator.dart';
 import 'package:connecto/core/interfaces/auth_manager.dart';
 import 'package:connecto/core/interfaces/connection_manager.dart';
 import 'package:connecto/core/interfaces/platform_integration.dart';
-import 'package:connecto/core/services/websocket_service.dart';
-import 'package:connecto/core/services/platform_transport.dart';
+import 'package:connecto/core/interfaces/device_transport.dart';
+import 'package:connecto/core/interfaces/native_platform_bridge.dart';
+
 import 'package:connecto/core/constants/app_constants.dart';
 
 // Manual test doubles
@@ -56,7 +57,7 @@ class FakePlatformIntegration implements PlatformIntegration {
   }
 }
 
-class FakeWebSocketService implements WebSocketService {
+class FakeDeviceTransport implements DeviceTransport {
   @override
   void Function(bool)? onConnectionChange;
 
@@ -77,9 +78,18 @@ class FakeWebSocketService implements WebSocketService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class FakePlatformTransport implements PlatformTransport {
+class FakeNativePlatformBridge implements NativePlatformBridge {
   @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  void dispose() {}
+
+  @override
+  Stream<Map<String, dynamic>> get messages => const Stream.empty();
+
+  @override
+  void send(Map<String, dynamic> message) {}
+
+  @override
+  void Function()? onUnpaired;
 }
 
 void main() {
@@ -88,8 +98,8 @@ void main() {
   late FakeAuthManager authManager;
   late FakeConnectionManager connectionManager;
   late FakePlatformIntegration platformIntegration;
-  late FakeWebSocketService ws;
-  late FakePlatformTransport transport;
+  late FakeDeviceTransport ws;
+  late FakeNativePlatformBridge transport;
   late AppInitializationCoordinator coordinator;
 
   setUp(() {
@@ -97,8 +107,8 @@ void main() {
     authManager = FakeAuthManager();
     connectionManager = FakeConnectionManager();
     platformIntegration = FakePlatformIntegration();
-    ws = FakeWebSocketService();
-    transport = FakePlatformTransport();
+    ws = FakeDeviceTransport();
+    transport = FakeNativePlatformBridge();
 
     coordinator = AppInitializationCoordinator(
       authManager,

@@ -84,6 +84,7 @@ class FileTransferService : Service() {
             var (filename, size) = getFileInfo(uri)
             Log.d("FileTransfer", "[PHASE7] FILE NAME: $filename")
             Log.d("FileTransfer", "[PHASE7] FILE SIZE: $size")
+            Log.d("ConnectoShare", "[FILE_TRANSFER_START] transferId=$currentTransferId fileName=$filename size=$size isBatchedZip=$isBatchedZip batchCount=$batchCount")
             
             if (filename == null) {
                 val ext = if (mimeType.contains("image")) "jpg" else if (mimeType.contains("video")) "mp4" else "dat"
@@ -91,12 +92,18 @@ class FileTransferService : Service() {
             }
 
             Log.d(TAG, "Copying to cache to preserve read access...")
-            contentResolver.openInputStream(uri)?.use { input ->
+            val inputStream = if (uri.scheme == "file") {
+                java.io.File(uri.path!!).inputStream()
+            } else {
+                contentResolver.openInputStream(uri)
+            }
+            
+            inputStream?.use { input ->
                 tempFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             } ?: throw Exception("Cannot open stream for copying")
-
+            
             if (size == null || size <= 0L) {
                 size = tempFile.length()
             }
@@ -139,9 +146,12 @@ class FileTransferService : Service() {
 
             // 3. Wait for Ready (30s timeout)
             Log.d("FileTransfer", "[FT-SERVICE] waiting for ready")
-            Log.d("FileTransfer", "[PHASE7] Waiting for ready")
-            withTimeout(30000) {
+            Log.d(TAG, "Waiting for macOS ready handshake...")
+            withTimeout(300000) {
                 readyJob?.join()
+            }
+            if (readyJob?.isCancelled == true) {
+                throw java.util.concurrent.CancellationException("readyJob was cancelled by error")
             }
             Log.d(TAG, "macOS ready handshake received, starting chunks")
 
@@ -167,9 +177,12 @@ class FileTransferService : Service() {
                     )
                     Log.d("FileTransfer", "[PHASE7] Chunk reference sent")
 
-                    // Wait for ACK (30s timeout)
-                    withTimeout(30000) {
+                    // Wait for ACK (5m timeout)
+                    withTimeout(300000) {
                         ackJob?.join()
+                    }
+                    if (ackJob?.isCancelled == true) {
+                        throw java.util.concurrent.CancellationException("ackJob was cancelled by error")
                     }
                     if (chunkFile.exists()) {
                         chunkFile.delete()
@@ -185,6 +198,9 @@ class FileTransferService : Service() {
             
             withTimeout(60000) {
                 completeJob?.join()
+            }
+            if (completeJob?.isCancelled == true) {
+                throw java.util.concurrent.CancellationException("completeJob was cancelled by error")
             }
 
         } catch (e: TimeoutCancellationException) {
@@ -222,7 +238,8 @@ class FileTransferService : Service() {
                 Log.d("FileTransfer", "[PHASE7] COMPLETE SIGNAL RECEIVED")
                 val match = json.optBoolean("sha256Match", false)
                 if (!match) Log.e(TAG, "SHA256 mismatch reported by macOS")
-                
+                Log.d("ConnectoShare", "[FILE_TRANSFER_COMPLETE] transferId=${json.optString("transferId")} sha256Match=$match")
+
                 synchronized(this) {
                     if (!transferResultReported) {
                         transferResultReported = true

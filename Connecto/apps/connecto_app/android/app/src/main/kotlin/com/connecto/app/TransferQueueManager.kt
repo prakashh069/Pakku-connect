@@ -83,6 +83,8 @@ object TransferQueueManager {
                 Log.d("FileTransfer", "[PHASE8] ZIP PATH: ${zipFile.absolutePath}")
 
                 val zipUri = Uri.fromFile(zipFile)
+                Log.d("ConnectoShare", "[MESSAGEBUS_SEND] Zipped ${uris.size} files. zipSize=${zipFile.length()} zipUri=$zipUri isBatchedZip=true")
+
                 val serviceIntent = Intent(appContext, FileTransferService::class.java).apply {
                     this.action = Intent.ACTION_SEND
                     this.type = "application/zip"
@@ -92,6 +94,7 @@ object TransferQueueManager {
                     putExtra("batchId", batchId)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
+                Log.d("ConnectoShare", "[MESSAGEBUS_SEND] Starting FileTransferService with action=ACTION_SEND type=application/zip")
                 context.startService(serviceIntent)
                 
             } catch (e: Exception) {
