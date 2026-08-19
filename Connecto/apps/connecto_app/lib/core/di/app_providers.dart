@@ -15,7 +15,7 @@ import '../services/platform_transport.dart';
 import '../../features/notifications/services/notification_manager.dart';
 import '../../features/calling/services/call_manager.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
-
+import '../app/app_bootstrap_service.dart';
 WebSocketService? _wsService;
 
 class AppProviders extends StatelessWidget {
@@ -98,6 +98,15 @@ class AppProviders extends StatelessWidget {
           create: (ctx) =>
               NotificationManager(ctx.read<PlatformTransport>()),
           update: (_, pt, previous) => previous ?? NotificationManager(pt),
+        ),
+        Provider<AppBootstrapService>(
+          lazy: false,
+          create: (ctx) => AppBootstrapService(
+            ctx.read<WebSocketService>(),
+            ctx.read<CallManager>(),
+            ctx.read<ClipboardSyncManager>(),
+          )..initialize(),
+          dispose: (_, svc) => svc.dispose(),
         ),
       ],
       child: child,

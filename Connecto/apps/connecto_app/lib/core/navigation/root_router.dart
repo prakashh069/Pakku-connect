@@ -11,9 +11,8 @@ import '../../features/auth/screens/scan_screen.dart';
 import '../../features/onboarding/screens/onboarding_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
-import '../../features/clipboard/services/clipboard_share_coordinator.dart';
-import '../../features/calling/services/call_manager.dart';
 import '../../features/relay/services/relay_manager.dart';
+import '../app/app_bootstrap_service.dart';
 import '../../features/auth/services/pairing_service.dart';
 import '../services/websocket_service.dart';
 import '../services/platform_transport.dart';
@@ -33,8 +32,6 @@ class _RootRouterState extends State<RootRouter> {
   bool _isPaired = false;
   bool _hasSeenOnboarding = false;
   DeviceSessionState _sessionState = DeviceSessionState.disconnected;
-  ClipboardShareCoordinator? _clipboardCoordinator;
-
   @override
   void initState() {
     super.initState();
@@ -60,7 +57,6 @@ class _RootRouterState extends State<RootRouter> {
 
   @override
   void dispose() {
-    _clipboardCoordinator?.dispose();
     super.dispose();
   }
 
@@ -69,11 +65,9 @@ class _RootRouterState extends State<RootRouter> {
 
     if (!mounted) return;
 
-    // Wire ClipboardShareCoordinator to receive validated inbound clipboard events (both macOS and Android).
-    final clipManager = context.read<ClipboardSyncManager>();
-    _clipboardCoordinator = ClipboardShareCoordinator();
-    _clipboardCoordinator!.attach(clipManager.inboundShares);
-    
+    // Ensure background bootstrap service is instantiated
+    context.read<AppBootstrapService>();
+
     _hasSeenOnboarding = prefs.getBool('onboarding_complete') ?? false;
 
     if (Platform.isMacOS) {
@@ -117,19 +111,6 @@ class _RootRouterState extends State<RootRouter> {
       });
 
       final ws = context.read<WebSocketService>();
-      final manager = context.read<CallManager>();
-
-      ws.onIncomingCall = (callId, number, name) {
-        manager.handleIncoming(callId, number, name);
-      };
-
-      ws.onCallState = (callId, state) {
-        manager.handleCallState(callId, state);
-      };
-
-      ws.onActionResult = (action, success, error) {
-        manager.handleActionResult(action, success, error);
-      };
 
       ws.onConnectionChange = (connected) async {
         if (!connected && mounted) {
@@ -157,14 +138,6 @@ class _RootRouterState extends State<RootRouter> {
             ?.pushNamedAndRemoveUntil('/', (route) => false);
       };
 
-      const menuBarChannel = MethodChannel('com.connecto.app/menuBar');
-      menuBarChannel.setMethodCallHandler((call) async {
-        if (call.method == 'pause') {
-          ws.pause();
-        } else if (call.method == 'resume') {
-          ws.resume();
-        }
-      });
 
       final port = '$kRelayPort';
       
