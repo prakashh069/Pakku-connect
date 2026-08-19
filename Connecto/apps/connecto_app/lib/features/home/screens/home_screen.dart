@@ -11,7 +11,7 @@ import '../../calling/screens/recent_calls_tab.dart';
 import '../../contacts/screens/contacts_tab.dart';
 import '../widgets/android_unified_home.dart';
 import '../widgets/macos_quick_actions.dart';
-import '../../../main.dart';
+import '../../auth/services/pairing_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final DeviceSessionState sessionState;

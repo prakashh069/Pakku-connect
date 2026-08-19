@@ -26,29 +26,12 @@ import 'core/services/window_visibility_service.dart';
 import 'core/services/platform_transport.dart';
 import 'core/services/crypto_service.dart';
 import 'features/notifications/services/notification_manager.dart';
+import 'features/auth/services/pairing_service.dart';
 
 import 'features/home/screens/home_screen.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 WebSocketService? _wsService;
 
-Future<void> clearAllPairedState(SharedPreferences prefs) async {
-  await prefs.setBool('paired', false);
-  try {
-    const secureStorage = FlutterSecureStorage(
-      mOptions: MacOsOptions(
-        usesDataProtectionKeychain: !kDebugMode,
-      ),
-    );
-    await secureStorage.delete(key: 'hmacSecret');
-    await secureStorage.delete(key: 'ws_ip');
-    await secureStorage.delete(key: 'ws_port');
-    await secureStorage.delete(key: 'cert_fp');
-  } catch (_) {}
-  await prefs.remove('hmacSecret');
-  await prefs.remove('ws_ip');
-  await prefs.remove('ws_port');
-  await prefs.remove('cert_fp');
-}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
