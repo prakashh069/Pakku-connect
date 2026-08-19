@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../features/settings/screens/settings_screen.dart';
 import '../../features/settings/services/settings_service.dart';
 import '../constants/app_theme.dart';
 import '../constants/app_constants.dart';
@@ -18,8 +17,7 @@ import '../../features/notifications/services/notification_manager.dart';
 import '../navigation/navigation_service.dart';
 import '../../features/calling/services/call_manager.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
-import '../../features/home/screens/home_screen.dart';
-import '../navigation/root_router.dart';
+import '../navigation/app_routes.dart';
 
 WebSocketService? _wsService;
 
@@ -112,11 +110,7 @@ class ConnectoApp extends StatelessWidget {
         darkTheme: buildAppTheme(isDark: true),
         themeMode: ThemeMode.system,
         initialRoute: '/',
-        routes: {
-          '/settings': (context) => const SettingsScreen(),
-          '/': (_) => const RootRouter(),
-          '/home': (_) => const HomeScreen(),
-        },
+        routes: appRoutes,
       ),
     );
   }
