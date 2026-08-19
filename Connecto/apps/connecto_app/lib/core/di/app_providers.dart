@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../features/settings/services/settings_service.dart';
 import '../constants/app_constants.dart';
+import '../auth/device_auth_manager.dart';
 import '../services/websocket_service.dart';
 import '../../features/calling/services/recent_calls_manager.dart';
 import '../../features/contacts/services/favorites_service.dart';
@@ -26,6 +27,9 @@ class AppProviders extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        Provider<DeviceAuthManager>(
+          create: (_) => DeviceAuthManager(),
+        ),
         Provider<WebSocketService>(
           create: (_) {
             _wsService = WebSocketService();

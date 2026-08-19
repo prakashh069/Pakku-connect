@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +12,7 @@ import '../../features/home/screens/home_screen.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
 import '../../features/relay/services/relay_manager.dart';
 import '../app/app_bootstrap_service.dart';
+import '../auth/device_auth_manager.dart';
 import '../../features/auth/services/pairing_service.dart';
 import '../services/websocket_service.dart';
 import '../services/platform_transport.dart';
@@ -68,40 +68,16 @@ class _RootRouterState extends State<RootRouter> {
     // Ensure background bootstrap service is instantiated
     context.read<AppBootstrapService>();
 
-    _hasSeenOnboarding = prefs.getBool('onboarding_complete') ?? false;
+    final authManager = context.read<DeviceAuthManager>();
+    _hasSeenOnboarding = await authManager.hasSeenOnboarding();
 
     if (Platform.isMacOS) {
-      _isPaired = prefs.getBool('paired') ?? false;
+      _isPaired = await authManager.isPaired();
       String? hmacSecret;
 
       if (_isPaired) {
-        try {
-          const secureStorage = FlutterSecureStorage(
-            mOptions: MacOsOptions(
-              usesDataProtectionKeychain: !kDebugMode,
-            ),
-          );
-          hmacSecret = await secureStorage.read(key: 'hmacSecret');
-          if (hmacSecret != null) {
-            debugPrint('Keychain read success');
-          }
-          
-          // Migration from insecure SharedPreferences
-          final insecureSecret = prefs.getString('hmacSecret');
-          if (insecureSecret != null) {
-            if (hmacSecret == null) {
-              await secureStorage.write(key: 'hmacSecret', value: insecureSecret);
-              hmacSecret = insecureSecret;
-              debugPrint('Main: Migrated hmacSecret from SharedPreferences to Keychain');
-            }
-            await prefs.remove('hmacSecret');
-          }
-        } catch (e) {
-          debugPrint('Main: Keychain failed: $e');
-        }
+        hmacSecret = await authManager.getHmacSecret();
         if (hmacSecret == null) {
-          // Paired but no secret — force unpair so we don't loop forever.
-          await prefs.setBool('paired', false);
           _isPaired = false;
         }
       }
@@ -126,7 +102,7 @@ class _RootRouterState extends State<RootRouter> {
         // Only transition to Home on the FIRST Android connection after QR scan.
         // _isPaired starts false; once we set it true we never retrigger this.
         if (!_isPaired && newState == DeviceSessionState.connected) {
-          await _handleInitialPairingCompletion(prefs);
+          await _handleInitialPairingCompletion(authManager);
         }
         _handleSessionUpdate(newState);
       };
@@ -157,29 +133,11 @@ class _RootRouterState extends State<RootRouter> {
         debugPrint('Main: Waiting for pairing before WebSocket connection.');
       }
     } else {
-      _isPaired = prefs.getBool('paired') ?? false;
+      _isPaired = await authManager.isPaired();
       
       if (_isPaired) {
-        const secureStorage = FlutterSecureStorage();
-        String? hmacSecret;
-        try {
-          hmacSecret = await secureStorage.read(key: 'hmacSecret');
-          
-          // Migration from insecure SharedPreferences
-          final insecureSecret = prefs.getString('hmacSecret');
-          if (insecureSecret != null) {
-            if (hmacSecret == null) {
-              await secureStorage.write(key: 'hmacSecret', value: insecureSecret);
-              hmacSecret = insecureSecret;
-              debugPrint('Main: Migrated hmacSecret to SecureStorage');
-            }
-            await prefs.remove('hmacSecret');
-          }
-        } catch (e) {
-          debugPrint('Main: secure storage failed: $e');
-        }
+        final hmacSecret = await authManager.getHmacSecret();
         if (hmacSecret == null) {
-          await prefs.setBool('paired', false);
           _isPaired = false;
         }
       }
@@ -207,8 +165,8 @@ class _RootRouterState extends State<RootRouter> {
     }
   }
 
-  Future<void> _handleInitialPairingCompletion(SharedPreferences prefs) async {
-    await prefs.setBool('paired', true);
+  Future<void> _handleInitialPairingCompletion(DeviceAuthManager authManager) async {
+    await authManager.setPaired(true);
     if (mounted) {
       setState(() {
         _isPaired = true;
