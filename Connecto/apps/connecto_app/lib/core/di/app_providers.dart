@@ -12,6 +12,7 @@ import '../../features/share/services/share_manager.dart';
 import '../../features/file_transfer/services/file_transfer_manager.dart';
 import '../../features/relay/services/relay_manager.dart';
 import '../connection/app_connection_manager.dart';
+import '../platform/platform_integration_service.dart';
 import '../services/window_visibility_service.dart';
 import '../services/platform_transport.dart';
 import '../../features/notifications/services/notification_manager.dart';
@@ -47,6 +48,9 @@ class AppProviders extends StatelessWidget {
             ctx.read<WebSocketService>(),
             ctx.read<RelayManager>(),
           ),
+        ),
+        Provider<PlatformIntegrationService>(
+          create: (_) => PlatformIntegrationService(),
         ),
         Provider(
           create: (_) => WindowVisibilityService(),

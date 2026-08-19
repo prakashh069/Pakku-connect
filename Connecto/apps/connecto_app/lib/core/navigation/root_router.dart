@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +13,7 @@ import '../../features/relay/services/relay_manager.dart';
 import '../app/app_bootstrap_service.dart';
 import '../auth/device_auth_manager.dart';
 import '../connection/app_connection_manager.dart';
+import '../platform/platform_integration_service.dart';
 import '../../features/auth/services/pairing_service.dart';
 import '../services/websocket_service.dart';
 import '../services/platform_transport.dart';
@@ -127,16 +127,7 @@ class _RootRouterState extends State<RootRouter> {
       }
 
       if (_isPaired) {
-        try {
-          const platform = MethodChannel('com.connecto.app/platform');
-          await platform.invokeMethod('startPhoneStateService');
-          // Request call screening role for caller ID on Samsung Android 16+
-          try {
-            await platform.invokeMethod('requestCallScreeningRole');
-          } catch (_) {}
-        } catch (e, st) {
-          debugPrint('Failed to start PhoneStateService: $e\n$st');
-        }
+        await context.read<PlatformIntegrationService>().startAndroidPhoneStateService();
         if (mounted) {
           Navigator.of(context).pushReplacementNamed('/home');
         }
@@ -159,10 +150,7 @@ class _RootRouterState extends State<RootRouter> {
   }
 
   void _handleSessionUpdate(DeviceSessionState newState) {
-    if (Platform.isMacOS) {
-      const menuBarChannel = MethodChannel('com.connecto.app/menuBar');
-      menuBarChannel.invokeMethod('updateStatus', {'state': newState.name});
-    }
+    context.read<PlatformIntegrationService>().updateMacOsMenuBarStatus(newState.name);
     if (mounted) {
       setState(() {
         _sessionState = newState;
