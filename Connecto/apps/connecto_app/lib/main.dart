@@ -11,6 +11,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_theme.dart';
+import 'core/constants/app_constants.dart';
 import 'core/services/websocket_service.dart';
 import 'features/calling/services/call_manager.dart';
 import 'features/calling/services/recent_calls_manager.dart';
@@ -77,7 +78,7 @@ class ConnectoApp extends StatelessWidget {
             final rm = RelayManager();
             if (Platform.isMacOS) {
               rm.start(
-                port: 8080,
+                port: kRelayPort,
                 certPath: 'certs/device.crt',
                 keyPath: 'certs/device.key',
               ).catchError((e) {
@@ -302,7 +303,7 @@ class _RootRouterState extends State<RootRouter> {
         }
       });
 
-      final port = '8080';
+      final port = '$kRelayPort';
       
       String? certFp;
       try {
@@ -634,8 +635,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildQuickActions(colors, ws),
           const SizedBox(height: 32),
           _buildMacStatusRow('Contacts', '$contactCount', colors),
-          const SizedBox(height: 8),
-          _buildMacStatusRow('Last Sync', 'Just now', colors),
         ],
       ),
     );

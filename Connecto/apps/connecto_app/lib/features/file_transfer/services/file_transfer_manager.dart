@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/constants/message_types.dart';
@@ -17,7 +18,6 @@ class FileTransferManager {
   FileReceiver? _currentReceiver;
 
   FileTransferManager(this._transport) {
-    print("[PHASE7] FileTransferManager initialized");
     if (!Platform.isMacOS) return;
 
     _subscription = _transport.messages.listen(_handleMessage);
@@ -27,8 +27,6 @@ class FileTransferManager {
     try {
       final String? type = message['type'] as String?;
       if (type == null || !type.startsWith('file.transfer.')) return;
-      
-      print("[FT-MAC] websocket message received type=$type");
 
       switch (type) {
         case MessageTypes.fileTransferStart:
@@ -45,13 +43,11 @@ class FileTransferManager {
           break;
       }
     } catch (e, stackTrace) {
-      print("[FT-MAC] Error handling message: $e");
-      print("[FT-MAC] Stack trace: $stackTrace");
+      debugPrint('[FileTransferManager] Error handling message: $e\n$stackTrace');
     }
   }
 
   void _handleStart(FileTransferStart start) {
-    print("[PHASE7] START RECEIVED");
     if (_currentReceiver != null && _currentReceiver!.isActive) {
       _sendMessage(FileTransferError(
         transferId: start.transferId,
@@ -87,7 +83,7 @@ class FileTransferManager {
         'batchCount': batchCount,
       });
     } catch (e) {
-      print("[PHASE8] PROGRESS METHOD CHANNEL ERROR: $e");
+      debugPrint('[FileTransferManager] Progress method channel error: $e');
     }
   }
 
@@ -116,7 +112,6 @@ class FileTransferManager {
   }
 
   void _showPopup(List<String> filePaths, String fileName, bool isBatchedZip, String? folderPath) async {
-    print("[PHASE7] POPUP CREATED (isBatchedZip=$isBatchedZip)");
     try {
       const channel = MethodChannel('com.connecto.app/fileTransferPopup');
       await channel.invokeMethod('showFileTransferPopup', {
@@ -126,7 +121,7 @@ class FileTransferManager {
         'folderPath': folderPath,
       });
     } catch (e) {
-      print("[PHASE7] POPUP METHOD CHANNEL ERROR: $e");
+      debugPrint('[FileTransferManager] Popup method channel error: $e');
     }
   }
 
@@ -145,9 +140,6 @@ class FileTransferManager {
       if (fileName != null) args['fileName'] = fileName;
       if (mimeType != null) args['mimeType'] = mimeType;
       if (isImage != null) args['isImage'] = isImage;
-      
-      print("[PHASE7] METHOD CHANNEL INVOKED");
-      print("title: $title, body: $body, filePath: $filePath, fileName: $fileName, mimeType: $mimeType, isImage: $isImage");
       
       _notificationChannel.invokeMethod('showNotification', args);
     } catch (e) {

@@ -19,7 +19,6 @@ class MessageTypes {
   static const String syncNotification = 'sync.notification';
   static const String syncNotificationRemoved = 'sync.notification.removed';
   
-  // Phase 7: File Transfer Framework
   static const String fileTransferStart = 'file.transfer.start';
   static const String fileTransferReady = 'file.transfer.ready';
   static const String fileTransferChunk = 'file.transfer.chunk';

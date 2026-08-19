@@ -1,5 +1,5 @@
 class RelayConfig {
-  static const int maxPayloadBytes = 6 * 1024 * 1024; // 6 MB (Phase 6 envelope limit)
+  static const int maxPayloadBytes = 6 * 1024 * 1024; // 6 MB relay envelope limit
   static const int maxUnauthenticated = 10;
   static const Duration handshakeTimeout = Duration(milliseconds: 5000);
   static const Duration rateLimitWindow = Duration(milliseconds: 60000);

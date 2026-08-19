@@ -6,6 +6,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/services/crypto_service.dart';
 import '../../../core/constants/app_theme.dart';
+import '../../../core/constants/app_constants.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/websocket_service.dart';
 import '../../relay/services/relay_manager.dart';
@@ -88,7 +89,7 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
       return;
     }
 
-    final port = 8080;
+    final port = kRelayPort;
 
     String? certFp;
     try {

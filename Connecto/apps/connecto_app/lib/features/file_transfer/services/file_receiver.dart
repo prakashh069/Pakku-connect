@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 
@@ -145,17 +144,10 @@ class FileReceiver {
     );
 
     try {
-      print("[FT-RECEIVER] start");
-      if (start.isBatchedZip) {
-          print("[PHASE8] BATCH START");
-          print("[PHASE8] EXPECTED FILES: ${start.batchCount ?? 0}");
-      }
       final tempDir = Directory('${Directory.systemTemp.path}/connecto_transfers/${start.transferId}');
       if (!await tempDir.exists()) {
         await tempDir.create(recursive: true);
       }
-      print("[FileReceiver] temp directory created");
-      print("[PHASE7] Temp directory created");
 
       _tempFile = File('${tempDir.path}/${_session!.filename}');
       _fileSink = _tempFile!.openWrite();
@@ -163,8 +155,6 @@ class FileReceiver {
       _session!.state = FileTransferState.readyReceived;
       
       sendMessage(FileTransferReady(transferId: start.transferId).toJson());
-      print("[FT-RECEIVER] ready sent");
-      print("[PHASE7] READY SENT");
 
       _lastReportedProgress = 0.0;
       _resetTimers();
@@ -203,12 +193,8 @@ class FileReceiver {
       _session!.receivedBytes += bytes.length;
       double newProgress = _session!.progress;
 
-      print("[FileReceiver] chunk received ${chunk.chunkIndex}");
-      print("[PHASE7] CHUNK RECEIVED ${chunk.chunkIndex}");
-      
       if (newProgress - _lastReportedProgress >= 0.05 || _session!.receivedChunks == _session!.totalChunks) {
           _lastReportedProgress = newProgress;
-          print("[PHASE8] PROGRESS UPDATE: ${(newProgress * 100).toInt()}%");
           onProgress(_session!.transferId, newProgress);
       }
 
@@ -216,7 +202,6 @@ class FileReceiver {
         transferId: chunk.transferId,
         chunkIndex: chunk.chunkIndex,
       ).toJson());
-      print("[PHASE7] ACK SENT ${chunk.chunkIndex}");
 
       if (_session!.receivedChunks == _session!.totalChunks) {
         await _finishTransfer();
@@ -241,8 +226,6 @@ class FileReceiver {
   }
 
   Future<void> _finishTransfer() async {
-    print("[PHASE7] COMPLETE RECEIVED MAC");
-    print("[PHASE7] FINISH TRANSFER START");
     _cancelTimers();
     _session!.state = FileTransferState.verifying;
     await _fileSink?.flush();
@@ -254,18 +237,14 @@ class FileReceiver {
         throw Exception("Temp file missing");
       }
 
-      print("[PHASE7] SHA256 VERIFY START");
       final hash = await sha256.bind(_tempFile!.openRead()).first;
       final computedSha256 = hash.toString();
 
       if (computedSha256 != _session!.sha256) {
-        print("[PHASE7] SHA256 MISMATCH");
         _handleError(FileTransferErrorReasons.sha256Mismatch);
         return;
       }
-      print("[PHASE7] SHA256 VERIFIED");
 
-      bool isImage = _session!.mime.startsWith('image/');
       bool isBatchedZip = _session!.isBatchedZip;
 
       final tempDir = Directory('${Directory.systemTemp.path}/connecto_transfers/${_session!.transferId}');
@@ -275,15 +254,11 @@ class FileReceiver {
         transferId: _session!.transferId,
         sha256Match: true,
       ).toJson());
-      print("[PHASE7] COMPLETE SENT TO ANDROID");
-      print("[PHASE7] COMPLETION EVENT SENT");
 
       List<String>? extractedPaths;
       String? folderPath;
       
       if (isBatchedZip) {
-          print("[PHASE8] ZIP EXTRACTION START (ISOLATE)");
-          
           if (!tempDir.existsSync()) {
               tempDir.createSync(recursive: true);
           }
@@ -297,21 +272,12 @@ class FileReceiver {
           if (_tempFile!.existsSync()) {
               _tempFile!.deleteSync();
           }
-          
-          print("[PHASE8] BATCH COMPLETE");
-          print("[PHASE8] SHOWING BATCH POPUP");
-          print("[PHASE8] FILE COUNT: ${extractedPaths?.length}");
-      }
-      
-      print("[PHASE7] IMAGE DETECTED: $isImage");
-      if (isImage && extractedPaths == null) {
-        print("[PHASE7] FILE PATH SENT: ${_tempFile!.path}");
       }
 
       // showNotification will only be called by FileTransferManager for non-batch or when batch is complete
       onFinished(_session!.transferId, session: _session!, filePaths: extractedPaths ?? [_tempFile!.path], folderPath: folderPath);
     } catch (e) {
-      print("[PHASE7] FINISH ERROR: $e");
+      debugPrint('[FileReceiver] Transfer completion error: $e');
       _handleError(FileTransferErrorReasons.writeFailure);
     }
   }

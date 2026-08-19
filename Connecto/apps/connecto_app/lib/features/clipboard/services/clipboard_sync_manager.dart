@@ -214,7 +214,7 @@ class ClipboardSyncManager extends ChangeNotifier {
       final mime = rawMime;
 
       final rawContent = payload['content'];
-      // In Phase 6 schema, content might be a direct string (base64/text) or a Map.
+      // content might be a direct string (base64/text) or a Map.
       // The canonical ShareContent expects a Map, but if it's a direct string we construct one.
       final ShareContent content;
       if (rawContent is String) {

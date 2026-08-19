@@ -33,8 +33,6 @@ class FileTransferPanelController {
         )
         methodChannel?.setMethodCallHandler { [weak self] (call, result) in
             if call.method == "showFileTransferPopup", let args = call.arguments as? [String: Any] {
-                print("[PHASE7] POPUP METHOD CHANNEL RECEIVED")
-                
                 var paths: [String] = []
                 if let filePaths = args["filePaths"] as? [String] {
                     paths = filePaths
@@ -437,7 +435,6 @@ class FileTransferPanelController {
             }
             return finalUrls
         } catch {
-            print("[PHASE9] ERROR SAVING FILES: \(error)")
             return nil
         }
     }
