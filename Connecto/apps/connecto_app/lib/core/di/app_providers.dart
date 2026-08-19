@@ -38,23 +38,11 @@ class AppProviders extends StatelessWidget {
         ),
         Provider<RelayManager>(
           lazy: false,
-          create: (_) {
-            final rm = RelayManager();
-            if (Platform.isMacOS) {
-              rm.start(
-                port: kRelayPort,
-                certPath: 'certs/device.crt',
-                keyPath: 'certs/device.key',
-              ).catchError((e) {
-                debugPrint('Failed to start Dart Relay: $e');
-              });
-            }
-            return rm;
-          },
+          create: (_) => RelayManager(),
           dispose: (_, rm) => rm.stop(),
         ),
         Provider(
-          create: (_) => WindowVisibilityService()..init(),
+          create: (_) => WindowVisibilityService(),
           dispose: (_, wvs) => wvs.dispose(),
         ),
         ChangeNotifierProxyProvider2<WebSocketService, WindowVisibilityService,
@@ -87,7 +75,7 @@ class AppProviders extends StatelessWidget {
           lazy: false,
           create: (ctx) => ShareManager(
             ctx.read<PlatformTransport>()
-          )..start(),
+          ),
           dispose: (_, sm) => sm.stop(),
         ),
         Provider<FileTransferManager>(
@@ -109,6 +97,9 @@ class AppProviders extends StatelessWidget {
             ctx.read<WebSocketService>(),
             ctx.read<CallManager>(),
             ctx.read<ClipboardSyncManager>(),
+            ctx.read<RelayManager>(),
+            ctx.read<WindowVisibilityService>(),
+            ctx.read<ShareManager>(),
           )..initialize(),
           dispose: (_, svc) => svc.dispose(),
         ),
