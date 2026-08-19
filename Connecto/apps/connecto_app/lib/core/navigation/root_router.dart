@@ -13,10 +13,10 @@ import '../../features/clipboard/services/clipboard_sync_manager.dart';
 import '../../features/relay/services/relay_manager.dart';
 import '../app/app_bootstrap_service.dart';
 import '../auth/device_auth_manager.dart';
+import '../connection/app_connection_manager.dart';
 import '../../features/auth/services/pairing_service.dart';
 import '../services/websocket_service.dart';
 import '../services/platform_transport.dart';
-import '../services/crypto_service.dart';
 import '../constants/app_constants.dart';
 import 'navigation_service.dart';
 
@@ -79,6 +79,8 @@ class _RootRouterState extends State<RootRouter> {
         hmacSecret = await authManager.getHmacSecret();
         if (hmacSecret == null) {
           _isPaired = false;
+        } else {
+          await context.read<AppConnectionManager>().startConnection(hmacSecret);
         }
       }
 
@@ -114,24 +116,6 @@ class _RootRouterState extends State<RootRouter> {
             ?.pushNamedAndRemoveUntil('/', (route) => false);
       };
 
-
-      final port = '$kRelayPort';
-      
-      String? certFp;
-      try {
-        certFp = await CryptoService.certFingerprint('certs/device.der');
-      } catch (e) {
-        debugPrint('WebSocketService: Could not compute local certFp: $e');
-      }
-      
-      if (hmacSecret != null && hmacSecret.isNotEmpty) {
-        if (mounted) {
-          context.read<RelayManager>().setSecret(hmacSecret);
-        }
-        ws.connect('wss://127.0.0.1:$port', hmacSecret: hmacSecret, certFp: certFp);
-      } else {
-        debugPrint('Main: Waiting for pairing before WebSocket connection.');
-      }
     } else {
       _isPaired = await authManager.isPaired();
       
