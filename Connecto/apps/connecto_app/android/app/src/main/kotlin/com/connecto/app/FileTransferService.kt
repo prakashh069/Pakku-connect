@@ -60,7 +60,7 @@ class FileTransferService : Service() {
                 } finally {
                     pendingTransfers--
                     if (pendingTransfers <= 0) {
-                        Log.d("FileTransfer", "[PHASE8] All transfers complete, stopping service")
+                        Log.d("FileTransfer", "[FT_SERVICE_STOP]")
                         stopSelf()
                     }
                 }
@@ -217,10 +217,11 @@ class FileTransferService : Service() {
         } catch (e: Exception) {
             Log.e("ConnectoShare", "[TRANSFER_FAILED] transferId=$currentTransferId reason=${e.message}")
         } finally {
+            val isSuccess = transferResultReported
             if (!transferResultReported) {
                 sendError("write_failure")
             }
-            cleanupAndStop()
+            cleanupAndStop(isSuccess)
         }
     }
 
@@ -300,7 +301,7 @@ class FileTransferService : Service() {
 
     private fun cleanupAndStop(success: Boolean = false) {
         var shouldReport = false
-        Log.d("FileTransfer", "[PHASE7] ENTERING CLEANUP. Thread=${Thread.currentThread().id}, success=$success")
+        Log.d("FileTransfer", "[FT_CLEANUP_START] success=$success")
         synchronized(this) {
             Log.d("FileTransfer", "[PHASE7] INSIDE SYNC. transferResultReported=$transferResultReported")
             if (!transferResultReported) {
@@ -315,8 +316,6 @@ class FileTransferService : Service() {
             Log.d("FileTransfer", "[PHASE7] QUEUE CALLBACK SENT (success=$success)")
             TransferQueueManager.onTransferComplete(this, success)
         }
-
-        transport.stopListening()
         
         // Cancel jobs for THIS transfer only, do not cancel the whole scope
         readyJob?.cancel()
@@ -340,4 +339,10 @@ class FileTransferService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        Log.d("FileTransfer", "[FT_SERVICE_DESTROYED]")
+        transport.stopListening()
+        super.onDestroy()
+    }
 }
