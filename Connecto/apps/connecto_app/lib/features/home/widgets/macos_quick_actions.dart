@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_theme.dart';
-import '../../../core/services/websocket_service.dart';
+import '../../../core/interfaces/device_transport.dart';
 
 class MacOsQuickActions extends StatelessWidget {
   final CustomColors colors;
-  final WebSocketService ws;
+  final DeviceTransport ws;
   final bool flashlightOn;
   final bool isRinging;
 

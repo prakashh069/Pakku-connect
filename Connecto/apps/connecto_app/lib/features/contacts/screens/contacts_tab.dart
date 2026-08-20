@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../calling/services/call_manager.dart';
 import '../../../core/constants/app_theme.dart';
-import '../../../core/services/websocket_service.dart';
+import '../../../core/interfaces/device_transport.dart';
 import '../../../core/models/contact.dart';
 import '../../../shared/widgets/contact_avatar.dart';
 import '../services/favorites_service.dart';
@@ -24,7 +24,7 @@ class _ContactsTabState extends State<ContactsTab> {
   bool _isSearching = false;
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
-  WebSocketService? _wsService;
+  DeviceTransport? _wsService;
   Timer? _timeoutTimer;
   final ScrollController _scrollController = ScrollController();
   
@@ -36,7 +36,7 @@ class _ContactsTabState extends State<ContactsTab> {
     super.initState();
     _initLetterKeys();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _wsService = context.read<WebSocketService>();
+      _wsService = context.read<DeviceTransport>();
       _wsService?.onContactsReceived = _onContactsReceived;
       _requestContactsWithTimeout();
     });

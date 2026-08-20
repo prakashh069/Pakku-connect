@@ -179,4 +179,23 @@ void main() {
     // Auth manager should also be updated
     expect(await authManager.isPaired(), true);
   });
+
+  test('refreshAuthState rereads auth manager state and updates coordinator', () async {
+    await coordinator.initialize();
+    
+    // Initial state
+    expect(coordinator.state.isPaired, false);
+
+    // Simulate pairing completion by updating AuthManager mock directly
+    authManager.paired = true;
+    authManager.hmacSecret = 'new_secret';
+    authManager.seenOnboarding = true;
+
+    // Call the new refresh method
+    await coordinator.refreshAuthState();
+
+    // Expect the coordinator to have the updated state
+    expect(coordinator.state.isPaired, true);
+    expect(coordinator.state.hasSeenOnboarding, true);
+  });
 }

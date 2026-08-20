@@ -5,13 +5,14 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/app_theme.dart';
-import '../../../core/services/websocket_service.dart';
+import '../../../core/interfaces/device_transport.dart';
 import '../../calling/screens/keypad_tab.dart';
 import '../../calling/screens/recent_calls_tab.dart';
 import '../../contacts/screens/contacts_tab.dart';
 import '../widgets/android_unified_home.dart';
 import '../widgets/macos_quick_actions.dart';
 import '../../auth/services/pairing_service.dart';
+import '../../../core/interfaces/startup_coordinator.dart';
 
 class HomeScreen extends StatefulWidget {
   final DeviceSessionState sessionState;
@@ -39,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final ws = context.read<WebSocketService>();
+      final ws = context.read<DeviceTransport>();
       ws.onBatteryStatus = (data) {
         if (mounted) {
           setState(() {
@@ -121,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMacStatusPanel(
-      BuildContext context, CustomColors colors, WebSocketService ws) {
+      BuildContext context, CustomColors colors, DeviceTransport ws) {
     final isConnected = widget.sessionState == DeviceSessionState.connected;
     final statusText = isConnected
         ? '● Connected'
@@ -210,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPhoneModeSegmentedControl(CustomColors colors, WebSocketService ws) {
+  Widget _buildPhoneModeSegmentedControl(CustomColors colors, DeviceTransport ws) {
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -235,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildPhoneModeSegment(String mode, IconData icon, String tooltip, CustomColors colors, WebSocketService ws) {
+  Widget _buildPhoneModeSegment(String mode, IconData icon, String tooltip, CustomColors colors, DeviceTransport ws) {
     final isSelected = _phoneMode == mode;
     return Expanded(
       child: InkWell(
@@ -267,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMacLayout(
-      BuildContext context, CustomColors colors, WebSocketService ws) {
+      BuildContext context, CustomColors colors, DeviceTransport ws) {
     return Column(
       children: [
         if (widget.sessionState == DeviceSessionState.disconnected ||
@@ -380,7 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).extension<CustomColors>()!;
-    final ws = context.watch<WebSocketService>();
+    final ws = context.watch<DeviceTransport>();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final logoAsset = isDark
         ? 'assets/images/connecto_logo_dark.png'
@@ -409,7 +410,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // Step 1: Try to notify other device (best-effort, non-blocking) before closing socket
               if (Platform.isMacOS) {
                 try {
-                  await ws.send({'type': 'unpair'});
+                  ws.send({'type': 'unpair'});
                   await Future.delayed(const Duration(milliseconds: 100)); // allow flush
                 } catch (_) {}
               } else {
@@ -426,6 +427,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Step 3: Always navigate away regardless of network state
               if (context.mounted) {
+                context.read<StartupCoordinator>().resetToUnpaired();
                 Navigator.of(context)
                     .pushNamedAndRemoveUntil('/', (route) => false);
               }

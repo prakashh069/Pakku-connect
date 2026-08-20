@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'device_transport.dart';
 import '../constants/app_constants.dart';
 import '../services/websocket_service.dart';
 
@@ -33,4 +34,5 @@ class StartupState {
 abstract class StartupCoordinator extends ChangeNotifier {
   StartupState get state;
   Future<void> initialize();
+  void resetToUnpaired();
 }

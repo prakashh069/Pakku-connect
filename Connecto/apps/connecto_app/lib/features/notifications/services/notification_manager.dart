@@ -3,12 +3,13 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants/message_types.dart';
-import '../../../core/services/platform_transport.dart';
+import '../../../core/messaging/message_bus.dart';
+import '../../../core/messaging/message_types.dart';
 
 /// Manages notification mirroring from Android to macOS.
 ///
 /// Architecture:
-///   WebSocketService.messages stream
+///   AppMessageBus messages stream
 ///           ↓
 ///   NotificationManager (filters type == "sync.notification")
 ///           ↓
@@ -26,8 +27,8 @@ class NotificationManager extends ChangeNotifier {
   static const MethodChannel _channel =
       MethodChannel('com.connecto.app/notifications');
 
-  final PlatformTransport _transport;
-  StreamSubscription<Map<String, dynamic>>? _subscription;
+  final MessageBus? _messageBus;
+  StreamSubscription? _subscription;
 
   /// In-memory deduplication store.
   /// Key: notification id ("package:notificationId") or package+title hash
@@ -38,7 +39,7 @@ class NotificationManager extends ChangeNotifier {
   /// Deduplication window — 500ms.
   static const int _dedupWindowMs = 500;
 
-  NotificationManager(this._transport) {
+  NotificationManager(this._messageBus) {
     if (Platform.isMacOS) {
       _channel.setMethodCallHandler(_handleMethodCall);
       _subscribe();
@@ -46,11 +47,9 @@ class NotificationManager extends ChangeNotifier {
   }
 
   void _subscribe() {
-    _subscription = _transport.messages
-        .where((data) => 
-            data['type'] == MessageTypes.syncNotification || 
-            data['type'] == MessageTypes.syncNotificationRemoved)
-        .listen((data) {
+    _subscription = _messageBus?.messagesOfType(BusMessagePrefixes.notification)
+        .listen((busMsg) {
+      final data = busMsg.raw;
       if (data['type'] == MessageTypes.syncNotificationRemoved) {
         _handleNotificationRemoved(data);
       } else {
@@ -67,7 +66,7 @@ class NotificationManager extends ChangeNotifier {
       final String? text = call.arguments['text'] as String?;
       
       if (replyHandle != null && text != null) {
-        _transport.send({
+        _messageBus?.send({
           'type': 'action.notification_reply',
           'replyHandle': replyHandle,
           'text': text,

@@ -102,14 +102,17 @@ class FileTransferPanelController {
                 
                 if isDocumentComplete {
                     self.subtitleLabel.stringValue = "Download Complete"
+                    self.subtitleLabel.textColor = .systemGreen
                     self.detailLabel.stringValue = fileName
                     self.scheduleDismiss(delay: 3.0)
                 } else {
                     if isBatchedZip, let count = batchCount {
                         self.subtitleLabel.stringValue = "Receiving \(count) \(fileTypeStrPlural)..."
+                        self.subtitleLabel.textColor = .systemGreen
                         self.detailLabel.stringValue = "\(currentInt)%"
                     } else {
                         self.subtitleLabel.stringValue = "Receiving \(fileTypeStr)..."
+                        self.subtitleLabel.textColor = .systemGreen
                         self.detailLabel.stringValue = fileName
                     }
                 }
@@ -158,6 +161,7 @@ class FileTransferPanelController {
             if isAutoSave {
                 self.downloadedUrls = self.executeSaveLogic()
                 self.subtitleLabel.stringValue = "✓ Saved to Downloads"
+                self.subtitleLabel.textColor = .systemGreen
                 
                 self.copyButton.isHidden = true
                 self.downloadButton.isHidden = false
@@ -175,6 +179,7 @@ class FileTransferPanelController {
                 }
             } else {
                 self.subtitleLabel.stringValue = "✓ Transfer Complete"
+                self.subtitleLabel.textColor = .systemGreen
                 
                 self.copyButton.isHidden = false
                 self.downloadButton.isHidden = false

@@ -80,7 +80,7 @@ void main() {
       
       final receivedIndices = <int>[];
       bus.messagesOfType('file.transfer.chunk_ack').listen((msg) {
-        receivedIndices.add(msg.payload['chunkIndex'] as int);
+        receivedIndices.add(msg.raw['chunkIndex'] as int);
       });
 
       // Inject ACKs in a specific order

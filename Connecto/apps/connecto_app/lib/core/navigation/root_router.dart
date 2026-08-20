@@ -14,6 +14,8 @@ class RootRouter extends StatelessWidget {
     final coordinator = context.watch<StartupCoordinator>();
     final state = coordinator.state;
 
+    debugPrint('[ROOT_ROUTER_STATE] isLoading=${state.isLoading} hasSeenOnboarding=${state.hasSeenOnboarding} isPaired=${state.isPaired} sessionState=${state.sessionState}');
+
     if (state.isLoading) {
       return Scaffold(
         body: Center(

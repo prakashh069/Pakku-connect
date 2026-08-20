@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/crypto_service.dart';
 import '../../../core/constants/app_theme.dart';
+import 'package:provider/provider.dart';
+import '../../../core/app/app_initialization_coordinator.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -118,7 +120,10 @@ class _ScanScreenState extends State<ScanScreen> {
           debugPrint('ScanScreen: requestCallScreeningRole failed (non-fatal): $e');
         }
         if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/home');
+          await context.read<AppInitializationCoordinator>().refreshAuthState();
+          if (mounted) {
+            Navigator.of(context).pushReplacementNamed('/home');
+          }
         }
       } else {
         setState(() {

@@ -2,13 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 
-abstract class PlatformTransport {
-  void send(Map<String, dynamic> message);
-  Stream<Map<String, dynamic>> get messages;
-  void dispose();
-}
+import '../interfaces/native_platform_bridge.dart';
 
-class MethodChannelTransport implements PlatformTransport {
+class MethodChannelTransport implements NativePlatformBridge {
   static const MethodChannel _channel = MethodChannel('com.connecto.app/platform');
   
   final StreamController<Map<String, dynamic>> _messageController = StreamController.broadcast();

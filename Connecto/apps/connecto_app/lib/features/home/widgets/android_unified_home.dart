@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../core/interfaces/device_transport.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_theme.dart';
 import '../../../core/services/websocket_service.dart';
+import '../../../core/interfaces/startup_coordinator.dart';
 
 class AndroidUnifiedHome extends StatelessWidget {
   final DeviceSessionState sessionState;
@@ -17,6 +20,7 @@ class AndroidUnifiedHome extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('paired', false);
     if (context.mounted) {
+      context.read<StartupCoordinator>().resetToUnpaired();
       Navigator.of(context).pushReplacementNamed('/');
     }
   }

@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
-import '../../features/relay/services/relay_manager.dart';
-import '../services/websocket_service.dart';
 import '../services/crypto_service.dart';
 import '../constants/app_constants.dart';
+import '../interfaces/device_transport.dart';
+import '../interfaces/relay_service.dart';
 import '../interfaces/connection_manager.dart';
 
 class AppConnectionManager implements ConnectionManager {
-  final WebSocketService _ws;
-  final RelayManager _relayManager;
+  final DeviceTransport _ws;
+  final RelayService _relayManager;
 
   AppConnectionManager(this._ws, this._relayManager);
 

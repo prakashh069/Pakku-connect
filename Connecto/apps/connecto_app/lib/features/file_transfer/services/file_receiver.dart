@@ -159,6 +159,7 @@ class FileReceiver {
       _session!.state = FileTransferState.readyReceived;
       
       debugPrint('[ConnectoShare] [TRANSFER_READY] transferId=${start.transferId}');
+      debugPrint('[FT_READY_SENT] transferId=${start.transferId}');
       sendMessage(FileTransferReady(transferId: start.transferId).toJson());
 
       _lastReportedProgress = 0.0;
@@ -206,6 +207,7 @@ class FileReceiver {
       _resetTimers(); // Reset timer after successfully processing a chunk
 
       debugPrint('[ConnectoShare] [CHUNK_ACK_RECEIVED] transferId=${chunk.transferId} chunkIndex=${chunk.chunkIndex}');
+      debugPrint('[FT_ACK_SENT] transferId=${chunk.transferId} chunkIndex=${chunk.chunkIndex}');
       sendMessage(FileTransferChunkAck(
         transferId: chunk.transferId,
         chunkIndex: chunk.chunkIndex,

@@ -5,26 +5,31 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:pasteboard/pasteboard.dart';
-import '../../../core/services/platform_transport.dart';
+import '../../../core/messaging/message_bus.dart';
+import '../../../core/messaging/message_types.dart';
+import '../../../core/constants/message_types.dart';
 
 class ShareManager {
-  final PlatformTransport _transport;
+  final MessageBus? _messageBus;
   StreamSubscription? _subscription;
   static const MethodChannel _channel = MethodChannel('com.connecto.app/notifications');
 
-  ShareManager(this._transport);
+  ShareManager({
+    MessageBus? messageBus,
+  }) : _messageBus = messageBus;
 
   void start() {
-    _subscription = _transport.messages.listen(_onMessage);
-    debugPrint('[ShareManager] Started listening to PlatformTransport messages');
+    _subscription = _messageBus?.messagesOfType(BusMessagePrefixes.share).listen(_onMessage);
+    debugPrint('[ShareManager] Started listening to messages');
   }
 
   void stop() {
     _subscription?.cancel();
   }
 
-  void _onMessage(Map<String, dynamic> msg) async {
-    if (msg['type'] != 'share.clipboard') return;
+  void _onMessage(dynamic busMsg) async {
+    final msg = busMsg.raw;
+    if (msg['type'] != MessageTypes.shareClipboard) return;
     
     // Strict discriminator enforcement
     if (msg['source'] != 'share_sheet') return;

@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/models/call.dart';
 import '../../../core/constants/message_types.dart';
-import '../../../core/services/websocket_service.dart';
+import '../../../core/interfaces/device_transport.dart';
 import '../../../core/services/window_visibility_service.dart';
 import '../../../core/call/call_presenter.dart';
 import '../../../core/call/mac_call_presenter.dart';
 
 class CallManager extends ChangeNotifier {
   Call? _currentCall;
-  final WebSocketService wsService;
+  final DeviceTransport wsService;
   final WindowVisibilityService windowVisibilityService;
   CallPresenter? callPresenter;
   final MethodChannel _platform =

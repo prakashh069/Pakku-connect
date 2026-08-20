@@ -8,17 +8,9 @@ import 'package:crypto/crypto.dart';
 import 'crypto_service.dart';
 import '../constants/message_types.dart';
 import '../models/contact.dart';
-import 'platform_transport.dart';
+import '../interfaces/device_transport.dart';
 
-enum DeviceSessionState {
-  connected,
-  disconnected,
-  connecting,
-  reconnecting,
-  paused,
-}
-
-class WebSocketService implements PlatformTransport {
+class WebSocketService implements DeviceTransport {
   WebSocketChannel? _channel;
   Timer? _reconnectTimer;
   int _attempt = 0;
@@ -39,17 +31,28 @@ class WebSocketService implements PlatformTransport {
   @override
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
 
+  @override
   void Function(String callId, String phoneNumber, String? contactName)? onIncomingCall;
+  @override
   void Function(String callId, String state)? onCallState; // "answered" | "ended"
+  @override
   void Function(bool connected)? onConnectionChange;
+  @override
   void Function(DeviceSessionState state)? onDeviceStateChanged;
+  @override
   void Function(List<RemoteContact> contacts)? onContactsReceived;
   List<RemoteContact> cachedContacts = [];
+  @override
   void Function(String action, bool success, String? error)? onActionResult;
+  @override
   void Function(String action, String status, String? error, Map<String, dynamic> data)? onActionStatus;
+  @override
   void Function(Map<String, dynamic> data)? onDeviceState;
+  @override
   void Function()? onUnpair;
+  @override
   void Function(Map<String, dynamic> data)? onPlatformMessage;
+  @override
   void Function(Map<String, dynamic> batteryData)? onBatteryStatus;
 
   WebSocketService({

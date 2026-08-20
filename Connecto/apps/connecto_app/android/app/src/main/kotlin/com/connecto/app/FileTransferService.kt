@@ -20,6 +20,7 @@ class FileTransferService : Service() {
     private lateinit var transport: FileTransferTransport
     
     private var currentTransferId: String? = null
+    private var transferStartTime: Long = 0
     
     private var readyJob: CompletableJob? = null
     private var ackJob: CompletableJob? = null
@@ -84,7 +85,8 @@ class FileTransferService : Service() {
             var (filename, size) = getFileInfo(uri)
             Log.d("FileTransfer", "[PHASE7] FILE NAME: $filename")
             Log.d("FileTransfer", "[PHASE7] FILE SIZE: $size")
-            Log.d("ConnectoShare", "[FILE_TRANSFER_START] transferId=$currentTransferId fileName=$filename size=$size isBatchedZip=$isBatchedZip batchCount=$batchCount")
+            transferStartTime = System.currentTimeMillis()
+            Log.d("ConnectoShare", "[TRANSFER_START] transferId=$currentTransferId filename=$filename size=$size mimeType=$mimeType")
             
             if (filename == null) {
                 val ext = if (mimeType.contains("image")) "jpg" else if (mimeType.contains("video")) "mp4" else "dat"
@@ -142,6 +144,7 @@ class FileTransferService : Service() {
             }
             readyJob = Job()
             transport.send(startMsg)
+            Log.d("ConnectoShare", "[FT_START_SENT] transferId=$currentTransferId")
             Log.d("FileTransfer", "[PHASE7] START SENT TO TRANSPORT")
 
             // 3. Wait for Ready (30s timeout)
@@ -166,7 +169,8 @@ class FileTransferService : Service() {
                     chunkFile.writeText(chunkPayload)
                     
                     Log.d("FileTransfer", "[PHASE7] Chunk written to cache: ${chunkFile.absolutePath}")
-                    Log.d("FileTransfer", "[PHASE7] Sending chunk $chunkIndex")
+                    Log.d("ConnectoShare", "[FT_CHUNK_SENT] transferId=$currentTransferId chunkIndex=$chunkIndex")
+                    Log.d("ConnectoShare", "[CHUNK_SENT] transferId=$currentTransferId chunkIndex=$chunkIndex")
                     
                     ackJob = Job()
                     transport.sendChunkReference(
@@ -207,11 +211,11 @@ class FileTransferService : Service() {
             if (completeJob != null && completeJob?.isCompleted == false) {
                 Log.e("FileTransfer", "[PHASE7] COMPLETE SIGNAL TIMEOUT")
             }
-            Log.e("FileTransfer", "Transfer failed", e)
+            Log.e("ConnectoShare", "[TRANSFER_FAILED] transferId=$currentTransferId reason=timeout")
             sendError("timeout")
             cleanupAndStop()
         } catch (e: Exception) {
-            android.util.Log.e("FileTransfer", "Transfer failed", e)
+            Log.e("ConnectoShare", "[TRANSFER_FAILED] transferId=$currentTransferId reason=${e.message}")
         } finally {
             if (!transferResultReported) {
                 sendError("write_failure")
@@ -228,17 +232,21 @@ class FileTransferService : Service() {
 
         when (type) {
             "file.transfer.ready" -> {
-                Log.d("FileTransfer", "[PHASE7] READY RECEIVED")
+                Log.d("ConnectoShare", "[FT_READY_RECEIVED] transferId=$transferId")
+                Log.d("ConnectoShare", "[TRANSFER_READY] transferId=$transferId")
                 readyJob?.complete()
             }
             "file.transfer.chunk_ack" -> {
+                val chunkIndex = json.optInt("chunkIndex", -1)
+                Log.d("ConnectoShare", "[FT_ACK_RECEIVED] transferId=$transferId chunkIndex=$chunkIndex")
+                Log.d("ConnectoShare", "[CHUNK_ACK_RECEIVED] transferId=$transferId chunkIndex=$chunkIndex")
                 ackJob?.complete()
             }
             "file.transfer.complete" -> {
-                Log.d("FileTransfer", "[PHASE7] COMPLETE SIGNAL RECEIVED")
+                val duration = System.currentTimeMillis() - transferStartTime
+                Log.d("ConnectoShare", "[TRANSFER_COMPLETE] transferId=$transferId duration=${duration}ms")
                 val match = json.optBoolean("sha256Match", false)
                 if (!match) Log.e(TAG, "SHA256 mismatch reported by macOS")
-                Log.d("ConnectoShare", "[FILE_TRANSFER_COMPLETE] transferId=${json.optString("transferId")} sha256Match=$match")
 
                 synchronized(this) {
                     if (!transferResultReported) {

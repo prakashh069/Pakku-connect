@@ -13,8 +13,13 @@ import '../../features/file_transfer/services/file_transfer_manager.dart';
 import '../../features/relay/services/relay_manager.dart';
 import '../connection/app_connection_manager.dart';
 import '../platform/platform_integration_service.dart';
+import '../interfaces/device_transport.dart';
+import '../interfaces/native_platform_bridge.dart';
+import '../messaging/message_bus.dart';
+import '../messaging/app_message_bus.dart';
+import '../interfaces/relay_service.dart';
+import '../services/platform_transport.dart' show MethodChannelTransport;
 import '../services/window_visibility_service.dart';
-import '../services/platform_transport.dart';
 import '../../features/notifications/services/notification_manager.dart';
 import '../../features/calling/services/call_manager.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
@@ -36,18 +41,17 @@ class AppProviders extends StatelessWidget {
         Provider<AuthManager>(
           create: (_) => DeviceAuthManager(),
         ),
-        Provider<WebSocketService>(
-          create: (_) => WebSocketService(),
-        ),
-        Provider<RelayManager>(
-          lazy: false,
+        Provider<RelayService>(
           create: (_) => RelayManager(),
-          dispose: (_, rm) => rm.stop(),
+          dispose: (_, rm) => (rm as RelayManager).stop(),
+        ),
+        Provider<DeviceTransport>(
+          create: (_) => WebSocketService(),
         ),
         Provider<ConnectionManager>(
           create: (ctx) => AppConnectionManager(
-            ctx.read<WebSocketService>(),
-            ctx.read<RelayManager>(),
+            ctx.read<DeviceTransport>(),
+            ctx.read<RelayService>(),
           ),
         ),
         Provider<PlatformIntegration>(
@@ -57,59 +61,74 @@ class AppProviders extends StatelessWidget {
           create: (_) => WindowVisibilityService(),
           dispose: (_, wvs) => wvs.dispose(),
         ),
-        ChangeNotifierProxyProvider2<WebSocketService, WindowVisibilityService,
+        ChangeNotifierProxyProvider2<DeviceTransport, WindowVisibilityService,
             CallManager>(
-          create: (ctx) => CallManager(ctx.read<WebSocketService>(),
+          create: (ctx) => CallManager(ctx.read<DeviceTransport>(),
               ctx.read<WindowVisibilityService>()),
           update: (_, ws, wvs, previous) => previous ?? CallManager(ws, wvs),
         ),
-        ChangeNotifierProxyProvider<WebSocketService, RecentCallsManager>(
+        ChangeNotifierProxyProvider<DeviceTransport, RecentCallsManager>(
           lazy: false,
-          create: (ctx) => RecentCallsManager(ctx.read<WebSocketService>()),
+          create: (ctx) => RecentCallsManager(ctx.read<DeviceTransport>()),
           update: (_, ws, previous) => previous ?? RecentCallsManager(ws),
         ),
         ChangeNotifierProvider(create: (_) => FavoritesService()),
-        Provider<PlatformTransport>(
+        Provider<NativePlatformBridge?>(
           create: (ctx) => Platform.isMacOS
-              ? ctx.read<WebSocketService>()
+              ? null
               : MethodChannelTransport(),
-          dispose: (_, pt) => pt.dispose(),
+          dispose: (_, pt) => pt?.dispose(),
         ),
         ChangeNotifierProvider<SettingsService>(
           create: (_) => SettingsService(),
         ),
-        ChangeNotifierProxyProvider<PlatformTransport, ClipboardSyncManager>(
+        Provider<MessageBus>(
           lazy: false,
-          create: (ctx) => ClipboardSyncManager(ctx.read<PlatformTransport>()),
-          update: (_, pt, previous) => previous ?? ClipboardSyncManager(pt),
+          create: (ctx) => AppMessageBus(
+            deviceTransport: ctx.read<DeviceTransport>(),
+            nativeBridge: ctx.read<NativePlatformBridge?>(),
+          ),
+          dispose: (_, bus) => bus.dispose(),
         ),
-        Provider<ShareManager>(
+        ChangeNotifierProxyProvider<MessageBus, ClipboardSyncManager>(
+          lazy: false,
+          create: (ctx) => ClipboardSyncManager(
+            messageBus: ctx.read<MessageBus>(),
+          ),
+          update: (_, mb, previous) => previous ?? ClipboardSyncManager(messageBus: mb),
+        ),
+        ProxyProvider<MessageBus, ShareManager>(
           lazy: false,
           create: (ctx) => ShareManager(
-            ctx.read<PlatformTransport>()
-          ),
-          dispose: (_, sm) => sm.stop(),
+            messageBus: ctx.read<MessageBus>(),
+          )..start(),
+          update: (_, mb, previous) => previous ?? ShareManager(messageBus: mb),
         ),
-        Provider<FileTransferManager>(
+        ProxyProvider<MessageBus, FileTransferManager>(
           lazy: false,
           create: (ctx) => FileTransferManager(
-            ctx.read<PlatformTransport>()
+            messageBus: ctx.read<MessageBus>(),
           ),
-          dispose: (_, manager) => manager.dispose(),
+          update: (_, mb, previous) => previous ?? FileTransferManager(messageBus: mb),
         ),
-        ChangeNotifierProxyProvider<PlatformTransport, NotificationManager>(
+        ChangeNotifierProxyProvider<MessageBus, NotificationManager>(
           lazy: false,
-          create: (ctx) =>
-              NotificationManager(ctx.read<PlatformTransport>()),
-          update: (_, pt, previous) => previous ?? NotificationManager(pt),
+          create: (ctx) => Platform.isMacOS
+              ? NotificationManager(ctx.read<MessageBus>())
+              : NotificationManager(null),
+          update: (_, mb, previous) =>
+              previous ??
+              (Platform.isMacOS
+                  ? NotificationManager(mb)
+                  : NotificationManager(null)),
         ),
         Provider<AppBootstrapService>(
           lazy: false,
           create: (ctx) => AppBootstrapService(
-            ctx.read<WebSocketService>(),
+            ctx.read<DeviceTransport>(),
             ctx.read<CallManager>(),
             ctx.read<ClipboardSyncManager>(),
-            ctx.read<RelayManager>(),
+            ctx.read<RelayService>(),
             ctx.read<WindowVisibilityService>(),
             ctx.read<ShareManager>(),
           )..initialize(),
@@ -120,9 +139,9 @@ class AppProviders extends StatelessWidget {
           create: (ctx) => AppInitializationCoordinator(
             ctx.read<AuthManager>(),
             ctx.read<ConnectionManager>(),
-            ctx.read<WebSocketService>(),
+            ctx.read<DeviceTransport>(),
             ctx.read<PlatformIntegration>(),
-            ctx.read<PlatformTransport>(),
+            ctx.read<NativePlatformBridge?>(),
           )..initialize(),
         ),
       ],

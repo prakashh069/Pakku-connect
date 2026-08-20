@@ -8,8 +8,8 @@ import '../../../core/services/crypto_service.dart';
 import '../../../core/constants/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
 import 'package:provider/provider.dart';
-import '../../../core/services/websocket_service.dart';
-import '../../relay/services/relay_manager.dart';
+import '../../../core/interfaces/device_transport.dart';
+import '../../../core/interfaces/relay_service.dart';
 
 class QrPairingScreen extends StatefulWidget {
   const QrPairingScreen({super.key});
@@ -128,12 +128,15 @@ class _QrPairingScreenState extends State<QrPairingScreen> {
     // Provision the relay with the current secret.
     if (mounted) {
       try {
-        final ws = Provider.of<WebSocketService>(context, listen: false);
+        final ws = Provider.of<DeviceTransport>(context, listen: false);
         if (mounted) {
-          context.read<RelayManager>().setSecret(_sessionHmacSecret!);
+          debugPrint('QrPairingScreen: calling RelayService.setSecret with new secret');
+          context.read<RelayService>().setSecret(_sessionHmacSecret!);
         }
         ws.connect('wss://127.0.0.1:$port', hmacSecret: _sessionHmacSecret, certFp: certFp);
-      } catch (_) {}
+      } catch (e, st) {
+        debugPrint('QrPairingScreen: Error provisioning relay: $e\n$st');
+      }
     }
 
     // Build the QR JWT using the current session secret.

@@ -2,20 +2,20 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../services/websocket_service.dart';
+import '../interfaces/device_transport.dart';
+import '../interfaces/relay_service.dart';
 import '../constants/app_constants.dart';
 import '../../features/calling/services/call_manager.dart';
 import '../../features/clipboard/services/clipboard_sync_manager.dart';
 import '../../features/clipboard/services/clipboard_share_coordinator.dart';
-import '../../features/relay/services/relay_manager.dart';
 import '../services/window_visibility_service.dart';
 import '../../features/share/services/share_manager.dart';
 
 class AppBootstrapService {
-  final WebSocketService _ws;
+  final DeviceTransport _ws;
   final CallManager _callManager;
   final ClipboardSyncManager _clipboardManager;
-  final RelayManager _relayManager;
+  final RelayService _relayManager;
   final WindowVisibilityService _windowVisibilityService;
   final ShareManager _shareManager;
 

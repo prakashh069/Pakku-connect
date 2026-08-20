@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:connecto/core/constants/app_theme.dart';
 import 'package:connecto/features/calling/services/call_manager.dart';
-import 'package:connecto/core/services/websocket_service.dart';
+import 'package:connecto/core/interfaces/device_transport.dart';
 
 class KeypadTab extends StatefulWidget {
   final bool isActive;
@@ -62,7 +62,7 @@ class _KeypadTabState extends State<KeypadTab> {
 
   void _onCall() {
     if (_number.isNotEmpty) {
-      final ws = context.read<WebSocketService>();
+      final ws = context.read<DeviceTransport>();
       if (!ws.isConnected) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

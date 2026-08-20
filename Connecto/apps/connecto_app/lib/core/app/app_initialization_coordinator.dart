@@ -6,8 +6,8 @@ import '../interfaces/auth_manager.dart';
 import '../interfaces/connection_manager.dart';
 import '../interfaces/platform_integration.dart';
 import '../interfaces/startup_coordinator.dart';
-import '../services/websocket_service.dart';
-import '../services/platform_transport.dart';
+import '../interfaces/device_transport.dart';
+import '../interfaces/native_platform_bridge.dart';
 import '../constants/app_constants.dart';
 import '../../features/auth/services/pairing_service.dart';
 import '../navigation/navigation_service.dart';
@@ -15,9 +15,9 @@ import '../navigation/navigation_service.dart';
 class AppInitializationCoordinator extends ChangeNotifier implements StartupCoordinator {
   final AuthManager _authManager;
   final ConnectionManager _connectionManager;
-  final WebSocketService _ws;
+  final DeviceTransport _ws;
   final PlatformIntegration _platformService;
-  final PlatformTransport _transport;
+  final NativePlatformBridge? _nativeBridge;
 
   StartupState _state = StartupState();
   StartupState get state => _state;
@@ -27,15 +27,17 @@ class AppInitializationCoordinator extends ChangeNotifier implements StartupCoor
     this._connectionManager,
     this._ws,
     this._platformService,
-    this._transport,
+    this._nativeBridge,
   );
 
   Future<void> initialize() async {
+    debugPrint('[INIT_START] AppInitializationCoordinator.initialize() called. platform=macOS:${Platform.isMacOS}');
     final prefs = await SharedPreferences.getInstance();
 
     _setupAndroidTransport(prefs);
 
     bool hasSeenOnboarding = await _authManager.hasSeenOnboarding();
+    debugPrint('[AUTH_STATE] hasSeenOnboarding=$hasSeenOnboarding');
     
     _updateState((s) => s.copyWith(hasSeenOnboarding: hasSeenOnboarding));
 
@@ -52,7 +54,9 @@ class AppInitializationCoordinator extends ChangeNotifier implements StartupCoor
         }
       }
 
+      debugPrint('[AUTH_STATE] isPaired(raw)=$isPaired hmacSecret=${hmacSecret != null ? "present" : "null"}');
       _updateState((s) => s.copyWith(isPaired: isPaired, isLoading: false));
+      debugPrint('[PAIRING_STATE] macOS final state: isPaired=$isPaired isLoading=false');
 
       _ws.onConnectionChange = (connected) {
         if (!connected) {
@@ -72,14 +76,17 @@ class AppInitializationCoordinator extends ChangeNotifier implements StartupCoor
       _ws.onUnpair = () async {
         await clearAllPairedState(prefs);
         _ws.reset();
+        resetToUnpaired();
         navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
       };
 
     } else {
       bool isPaired = await _authManager.isPaired();
+      debugPrint('[AUTH_STATE] Android isPaired(raw)=$isPaired');
       
       if (isPaired) {
         final hmacSecret = await _authManager.getHmacSecret();
+        debugPrint('[AUTH_STATE] Android hmacSecret=${hmacSecret != null ? "present" : "null"}');
         if (hmacSecret == null) {
           isPaired = false;
         }
@@ -90,18 +97,19 @@ class AppInitializationCoordinator extends ChangeNotifier implements StartupCoor
       }
       
       _updateState((s) => s.copyWith(isPaired: isPaired, isLoading: false));
+      debugPrint('[PAIRING_STATE] Android final state: isPaired=$isPaired isLoading=false');
     }
   }
 
   void _setupAndroidTransport(SharedPreferences prefs) {
-    if (Platform.isAndroid && _transport is MethodChannelTransport) {
-      final t = _transport as MethodChannelTransport;
-      t.onUnpaired = () async {
+    if (Platform.isAndroid && _nativeBridge != null) {
+      _nativeBridge!.onUnpaired = () async {
         final wasPaired = prefs.getBool('paired') ?? false;
         if (wasPaired) {
           await clearAllPairedState(prefs);
-          navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
         }
+        resetToUnpaired();
+        navigatorKey.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
       };
     }
   }
@@ -109,5 +117,25 @@ class AppInitializationCoordinator extends ChangeNotifier implements StartupCoor
   void _updateState(StartupState Function(StartupState) updater) {
     _state = updater(_state);
     notifyListeners();
+  }
+
+  @override
+  void resetToUnpaired() {
+    _updateState((s) => s.copyWith(isPaired: false, sessionState: DeviceSessionState.disconnected));
+  }
+
+  Future<void> refreshAuthState() async {
+    bool hasSeenOnboarding = await _authManager.hasSeenOnboarding();
+    bool isPaired = await _authManager.isPaired();
+    if (isPaired) {
+      final hmacSecret = await _authManager.getHmacSecret();
+      if (hmacSecret == null) {
+        isPaired = false;
+      }
+    }
+    _updateState((s) => s.copyWith(
+      hasSeenOnboarding: hasSeenOnboarding,
+      isPaired: isPaired,
+    ));
   }
 }

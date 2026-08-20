@@ -3,9 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:connecto/features/relay/services/relay_adapter.dart';
 import 'package:connecto/features/relay/services/adapters/dart_relay_adapter.dart';
 
-enum RelayStatus { stopped, running, reconnecting, failed }
+import '../../../core/interfaces/relay_service.dart';
 
-class RelayManager {
+class RelayManager implements RelayService {
   
   late final RelayAdapter _adapter;
   final ValueNotifier<RelayStatus> status = ValueNotifier(RelayStatus.stopped);

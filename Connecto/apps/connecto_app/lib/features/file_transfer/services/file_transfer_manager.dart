@@ -4,35 +4,45 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/constants/message_types.dart';
-import '../../../core/services/platform_transport.dart';
+import '../../../core/messaging/message_bus.dart';
+import '../../../core/messaging/message_types.dart';
 import '../models/file_transfer_protocol.dart';
 import '../models/file_transfer_session.dart';
 import 'file_receiver.dart';
 
 class FileTransferManager {
-  final PlatformTransport _transport;
-  late final StreamSubscription<Map<String, dynamic>> _subscription;
+  final MessageBus? _messageBus;
+  late final StreamSubscription? _subscription;
   
   static const MethodChannel _notificationChannel = MethodChannel('com.connecto.app/notifications');
 
   FileReceiver? _currentReceiver;
 
-  FileTransferManager(this._transport) {
+  FileTransferManager({
+    MessageBus? messageBus,
+  }) : _messageBus = messageBus {
     if (!Platform.isMacOS) return;
 
-    _subscription = _transport.messages.listen(_handleMessage);
+    _subscription = _messageBus?.messagesOfType(BusMessagePrefixes.fileTransfer).listen(_handleMessage);
   }
 
-  void _handleMessage(Map<String, dynamic> message) {
+  void _sendMessage(Map<String, dynamic> message) {
+    _messageBus?.send(message, route: MessageRoute.broadcast);
+  }
+
+  void _handleMessage(dynamic busMsg) {
+    final message = busMsg.raw;
     try {
       final String? type = message['type'] as String?;
       if (type == null || !type.startsWith('file.transfer.')) return;
 
       switch (type) {
         case MessageTypes.fileTransferStart:
+          debugPrint('[FT_START_RECEIVED] type=$type');
           _handleStart(FileTransferStart.fromJson(message));
           break;
         case MessageTypes.fileTransferChunk:
+          debugPrint('[FT_CHUNK_RECEIVED] transferId=${message['transferId']} chunkIndex=${message['chunkIndex']}');
           _currentReceiver?.handleChunk(FileTransferChunk.fromJson(message));
           break;
         case MessageTypes.fileTransferError:
@@ -48,7 +58,9 @@ class FileTransferManager {
   }
 
   void _handleStart(FileTransferStart start) {
+    debugPrint('[ConnectoShare][FILE_TRANSFER_START] transferId=${start.transferId} fileName=${start.name} size=${start.size} isBatchedZip=${start.isBatchedZip} batchCount=${start.batchCount}');
     if (_currentReceiver != null && _currentReceiver!.isActive) {
+      debugPrint('[ConnectoShare][FILE_TRANSFER_START] REJECTED — transfer already active!');
       _sendMessage(FileTransferError(
         transferId: start.transferId,
         reason: FileTransferErrorReasons.transferAlreadyActive,
@@ -61,6 +73,7 @@ class FileTransferManager {
       showNotification: _showNotification,
       onFinished: _onReceiverFinished,
       onProgress: _onProgress,
+      onError: _onReceiverError,
     );
     
     _currentReceiver!.handleStart(start);
@@ -88,6 +101,7 @@ class FileTransferManager {
   }
 
   void _onReceiverFinished(String transferId, {FileTransferSession? session, List<String>? filePaths, String? folderPath}) {
+    debugPrint('[ConnectoShare][FILE_TRANSFER_COMPLETE] transferId=$transferId filePaths=${filePaths?.length} isBatchedZip=${session?.isBatchedZip}');
     if (_currentReceiver != null) {
       _currentReceiver = null;
     }
@@ -125,8 +139,18 @@ class FileTransferManager {
     }
   }
 
-  void _sendMessage(Map<String, dynamic> message) {
-    _transport.send(message);
+  void _onReceiverError(String transferId, String reason) {
+    debugPrint('[ConnectoShare][FILE_TRANSFER_ERROR] transferId=$transferId reason=$reason');
+    if (_currentReceiver != null) {
+      _currentReceiver = null;
+    }
+
+    if (Platform.isMacOS) {
+      const channel = MethodChannel('com.connecto.app/fileTransferPopup');
+      channel.invokeMethod('showFileTransferError', {
+        'reason': reason,
+      });
+    }
   }
 
   void _showNotification(String title, String body, {String? filePath, String? fileName, String? mimeType, bool? isImage}) {
@@ -149,7 +173,7 @@ class FileTransferManager {
 
   void dispose() {
     if (Platform.isMacOS) {
-      _subscription.cancel();
+      _subscription?.cancel();
       _currentReceiver?.handleCancel(FileTransferCancel(
         transferId: 'dispose',
         reason: 'app_backgrounded',

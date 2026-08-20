@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:connecto/features/clipboard/services/clipboard_sync_manager.dart';
 import 'package:connecto/core/services/platform_transport.dart';
+import 'package:connecto/core/interfaces/device_transport.dart';
+import 'package:connecto/core/messaging/app_message_bus.dart';
 import 'package:connecto/features/share/models/share_event.dart';
 
-class FuzzFakeTransport implements PlatformTransport {
+class FuzzFakeTransport implements DeviceTransport {
   final StreamController<Map<String, dynamic>> _controller = StreamController.broadcast();
 
   @override
@@ -36,13 +38,17 @@ class FuzzFakeTransport implements PlatformTransport {
   void dispose() {
     _controller.close();
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('ClipboardSyncManager Fuzz Testing', () {
+  group('ClipboardSyncManager Fuzzing', () {
     late FuzzFakeTransport transport;
+    late AppMessageBus bus;
     late ClipboardSyncManager manager;
 
     setUp(() {
@@ -55,10 +61,12 @@ void main() {
           .setMockMethodCallHandler(const MethodChannel('flutter/platform'), (_) async => null);
 
       transport = FuzzFakeTransport();
-      manager = ClipboardSyncManager(transport);
+      bus = AppMessageBus(deviceTransport: transport);
+      manager = ClipboardSyncManager(messageBus: bus);
     });
 
     tearDown(() {
+      bus.dispose();
       manager.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(const MethodChannel('com.pakku.connect/platform'), null);

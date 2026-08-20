@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_theme.dart';
-import '../../../core/services/websocket_service.dart';
+import '../../../core/interfaces/device_transport.dart';
 import 'package:flutter/services.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -26,7 +26,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final ws = context.read<WebSocketService>();
+      final ws = context.read<DeviceTransport>();
       ws.onBatteryStatus = (data) {
         if (mounted) {
           setState(() {
@@ -38,7 +38,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _unpair() async {
-    final ws = context.read<WebSocketService>();
+    final ws = context.read<DeviceTransport>();
     if (Platform.isMacOS) {
       try {
         await ws.send({'type': 'unpair'});

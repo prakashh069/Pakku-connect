@@ -4,6 +4,7 @@ import 'package:connecto/features/relay/services/relay_server.dart';
 class DartRelayAdapter implements RelayAdapter {
   RelayServer? _server;
   void Function(Object error)? _onError;
+  String? _pendingSecret;
 
   @override
   Future<void> start({
@@ -13,6 +14,9 @@ class DartRelayAdapter implements RelayAdapter {
   }) async {
     if (_server != null) return;
     _server = RelayServer();
+    if (_pendingSecret != null) {
+      _server!.setSecret(_pendingSecret!);
+    }
     _server!.onError = _onError;
     await _server!.start(
       port: port,
@@ -23,6 +27,7 @@ class DartRelayAdapter implements RelayAdapter {
 
   @override
   void setSecret(String secret) {
+    _pendingSecret = secret;
     _server?.setSecret(secret);
   }
 

@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../../core/constants/message_types.dart';
 import '../../../core/models/recent_call.dart';
-import '../../../core/services/websocket_service.dart';
+import '../../../core/interfaces/device_transport.dart';
 
 class RecentCallsManager extends ChangeNotifier {
-  final WebSocketService _webSocketService;
+  final DeviceTransport _webSocketService;
   late StreamSubscription _messageSub;
 
   List<RecentCall> _calls = [];
